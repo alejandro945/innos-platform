@@ -98,18 +98,20 @@ export default async function AnalisisPage({
       <div>
         <div className="mb-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <StatCard
-            label="Ahorro potencial (canasta)"
+            label="Ahorro potencial"
             value={formatCurrency(String(simulation.totalSavings))}
-            hint="Eligiendo el mejor proveedor por ítem"
+            hint="Si adjudicas cada ítem al proveedor más barato"
             icon={TrendingDown}
           />
           <StatCard
-            label="Costo canasta óptima"
+            label="Costo al más barato"
             value={formatCurrency(String(simulation.totalBest))}
+            hint="Sumando el mejor precio por ítem"
           />
           <StatCard
-            label="Costo canasta promedio"
+            label="Costo al promedio"
             value={formatCurrency(String(simulation.totalAvg))}
+            hint="Sumando el precio promedio por ítem"
           />
         </div>
         <Card className="p-0">
@@ -117,6 +119,11 @@ export default async function AnalisisPage({
             <h2 className="text-base font-semibold text-slate-900">
               Recomendación de adjudicación
             </h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Por cada ítem con 2+ proveedores con tarifa vigente, el proveedor
+              más barato y cuánto ahorrarías frente al promedio si lo adjudicas a
+              él. La suma de esos ahorros es el “ahorro potencial de la canasta”.
+            </p>
           </div>
           {simulation.lines.length === 0 ? (
             <p className="px-5 py-4 text-sm text-slate-500">

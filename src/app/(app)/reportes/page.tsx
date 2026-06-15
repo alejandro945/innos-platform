@@ -1,12 +1,16 @@
 import Link from "next/link";
-import { Download, FileBarChart } from "lucide-react";
+import { Download, FileBarChart, Trash2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
+import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, EmptyState } from "@/components/ui";
+import { MutateButton } from "@/components/mutate-button";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { deleteComparison } from "./actions";
 
 export default async function ReportesPage() {
   const session = await requireSession();
+  const canManage = hasAnyRole(session.roles, "ADMIN", "PROCUREMENT_ANALYST");
 
   const comparisons = await prisma.comparison.findMany({
     where: { process: { organizationId: session.organizationId } },
@@ -52,12 +56,25 @@ export default async function ReportesPage() {
                     </p>
                   </div>
                 </div>
-                <a
-                  href={`/procesos/${c.process.id}/comparacion/export`}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  <Download className="h-4 w-4" /> Excel
-                </a>
+                <div className="flex items-center gap-1">
+                  <a
+                    href={`/procesos/${c.process.id}/comparacion/export`}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <Download className="h-4 w-4" /> Excel
+                  </a>
+                  {canManage && (
+                    <MutateButton
+                      action={deleteComparison}
+                      fields={{ id: c.id }}
+                      variant="danger"
+                      confirmText={`¿Borrar este reporte de "${c.process.name}"?`}
+                      title="Borrar reporte"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </MutateButton>
+                  )}
+                </div>
               </Card>
             );
           })}

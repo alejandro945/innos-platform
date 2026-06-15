@@ -197,20 +197,15 @@ export default async function TarifasPage({
                         {ITEM_KIND_LABELS[r.canonicalItem.kind]}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-slate-600">
-                      <span className="flex items-center gap-2">
+                    <td className="px-5 py-3 text-slate-700">
+                      <div className="font-medium text-slate-900">
                         {r.provider.name}
-                        {r.sourceUploadId && (
-                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
-                            Desde proceso
-                          </span>
-                        )}
-                      </span>
-                      {r.tariffSource && (
-                        <span className="block text-xs text-slate-400">
-                          {r.tariffSource}
-                        </span>
-                      )}
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {r.sourceUploadId
+                          ? "Importado de proceso"
+                          : r.tariffSource || "Manual"}
+                      </div>
                     </td>
                     <td className="px-5 py-3 font-medium text-slate-900">
                       {formatCurrency(r.value.toString())}
