@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getAnthropic, MODELS } from "@/lib/anthropic";
+import { structuredGenerate, isLlmEnabled } from "@/lib/llm";
 
 /** Logical fields the platform needs from a provider file. */
 export const MAPPING_FIELDS = [
@@ -64,65 +64,51 @@ export async function suggestColumnMapping(
   headers: string[],
   sampleRows: Record<string, unknown>[],
 ): Promise<{ mapping: ColumnMapping; method: "ai" | "heuristic" }> {
-  const anthropic = getAnthropic();
-  if (!anthropic) {
+  if (!isLlmEnabled()) {
     return { mapping: heuristicMapping(headers), method: "heuristic" };
   }
 
-  try {
-    const sample = sampleRows.slice(0, 5);
-    const response = await anthropic.messages.create({
-      model: MODELS.fast,
-      max_tokens: 512,
-      tools: [
-        {
-          name: "report_mapping",
-          description:
-            "Reporta a qué encabezado del archivo corresponde cada campo lógico.",
-          input_schema: {
-            type: "object",
-            properties: {
-              name: { type: ["string", "null"] },
-              code: { type: ["string", "null"] },
-              price: { type: ["string", "null"] },
-              unit: { type: ["string", "null"] },
-              exclusions: { type: ["string", "null"] },
-            },
-            required: [...MAPPING_FIELDS],
-          },
-        },
-      ],
-      tool_choice: { type: "tool", name: "report_mapping" },
-      messages: [
-        {
-          role: "user",
-          content: `Eres un asistente que mapea columnas de archivos de tarifas de proveedores de salud (Colombia).
+  const sample = sampleRows.slice(0, 5);
+  const raw = await structuredGenerate({
+    tier: "fast",
+    maxTokens: 512,
+    toolName: "report_mapping",
+    toolDescription:
+      "Reporta a qué encabezado del archivo corresponde cada campo lógico.",
+    jsonSchema: {
+      type: "object",
+      properties: {
+        name: { type: ["string", "null"] },
+        code: { type: ["string", "null"] },
+        price: { type: ["string", "null"] },
+        unit: { type: ["string", "null"] },
+        exclusions: { type: ["string", "null"] },
+      },
+      required: [...MAPPING_FIELDS],
+    },
+    prompt: `Eres un asistente que mapea columnas de archivos de tarifas de proveedores de salud (Colombia).
 Dado los encabezados y filas de ejemplo, identifica qué encabezado corresponde a cada campo lógico.
 Usa EXACTAMENTE el texto del encabezado, o null si no existe.
 
 Encabezados: ${JSON.stringify(headers)}
 
-Filas de ejemplo: ${JSON.stringify(sample)}`,
-        },
-      ],
-    });
+Filas de ejemplo: ${JSON.stringify(sample)}
 
-    const toolUse = response.content.find((c) => c.type === "tool_use");
-    if (toolUse && toolUse.type === "tool_use") {
-      const parsed = mappingSchema.safeParse(toolUse.input);
-      if (parsed.success) {
-        // Keep only headers that actually exist.
-        const mapping = { ...parsed.data };
-        for (const field of MAPPING_FIELDS) {
-          if (mapping[field] && !headers.includes(mapping[field]!)) {
-            mapping[field] = null;
-          }
+Responde únicamente con el objeto solicitado.`,
+  });
+
+  if (raw) {
+    const parsed = mappingSchema.safeParse(raw);
+    if (parsed.success) {
+      // Keep only headers that actually exist.
+      const mapping = { ...parsed.data };
+      for (const field of MAPPING_FIELDS) {
+        if (mapping[field] && !headers.includes(mapping[field]!)) {
+          mapping[field] = null;
         }
-        return { mapping, method: "ai" };
       }
+      return { mapping, method: "ai" };
     }
-  } catch (e) {
-    console.error("AI column mapping failed, using heuristic:", e);
   }
 
   return { mapping: heuristicMapping(headers), method: "heuristic" };

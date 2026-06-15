@@ -1,0 +1,58 @@
+# Local development stack for the INOOS platform.
+#   docker compose up -d
+# Provides Postgres (with pgvector) + Ollama (local LLM + embeddings).
+# The Next.js app runs on the host: `pnpm dev`.
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: inoos-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: inoos
+      POSTGRES_PASSWORD: inoos
+      POSTGRES_DB: inoos
+    ports:
+      - "5432:5432"
+    volumes:
+      - inoos-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inoos -d inoos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: inoos-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - inoos-ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: pulls the chat + embedding models, then exits.
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: inoos-ollama-init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Pulling chat model (qwen2.5)..." && ollama pull qwen2.5 &&
+        echo "Pulling embedding model (nomic-embed-text)..." && ollama pull nomic-embed-text &&
+        echo "Models ready."
+    restart: "no"
+
+volumes:
+  inoos-db-data:
+  inoos-ollama-data:

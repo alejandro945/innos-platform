@@ -1,6 +1,6 @@
 import type { MappingMethod, MappingStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isAiEnabled } from "@/lib/anthropic";
+import { isLlmEnabled } from "@/lib/llm";
 import {
   findByCode,
   findPriorMapping,
@@ -100,7 +100,7 @@ export async function normalizeProviderItem(providerItemId: string) {
   return persistMapping(providerItemId, {
     canonicalItemId: decision.canonicalItemId,
     confidence: decision.confidence,
-    method: isAiEnabled() ? "AI" : "VECTOR",
+    method: isLlmEnabled() ? "AI" : "VECTOR",
     status: statusForConfidence(decision.canonicalItemId, decision.confidence),
     rationale: decision.rationale,
   });

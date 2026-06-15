@@ -25,14 +25,55 @@ Plataforma web para centralizar las tarifas de proveedores, estandarizar
 - [x] **Fase 4 — Comparación y reportes:** comparación por ítem (mín/máx/prom + mejor precio + ahorro), exportación Excel, reporte imprimible (PDF), página de reportes.
 - [ ] **Fase 5 — Avanzadas** · [ ] **Fase 6 — Hardening**
 
-### Activar la IA (Fase 3)
+### Capa de IA — proveedores
 
-- `ANTHROPIC_API_KEY` — agente de homologación (sin esto usa heurística/léxico).
-- `OPENAI_API_KEY` — embeddings para recuperación vectorial (sin esto usa léxico).
-- pgvector: `psql "$DIRECT_URL" -f prisma/sql/001_pgvector.sql`, luego `pnpm backfill:embeddings`.
-- `INNGEST_EVENT_KEY` — orquestación durable (sin esto la homologación corre inline).
+La IA es agnóstica de proveedor (ver [src/lib/llm.ts](src/lib/llm.ts) y
+[src/lib/embeddings.ts](src/lib/embeddings.ts)). Sin ningún proveedor, el sistema
+usa recuperación **léxica** y sigue funcionando.
 
-## Puesta en marcha
+- **Ollama (local):** `LLM_PROVIDER=ollama` + `EMBEDDINGS_PROVIDER=ollama` (ver abajo).
+- **Nube:** `ANTHROPIC_API_KEY` (homologación, Claude) + `OPENAI_API_KEY` (embeddings).
+- **pgvector:** `pnpm db:vector` (usa `EMBEDDING_DIMS`), luego `pnpm backfill:embeddings`.
+- **Inngest** (`INNGEST_EVENT_KEY`): orquestación durable; sin esto la homologación corre inline.
+
+## Puesta en marcha local (Docker + Ollama)
+
+Stack 100% local, sin claves de nube. Requiere Docker y pnpm.
+
+1. **Levantar Postgres (pgvector) + Ollama** y descargar los modelos:
+
+   ```bash
+   docker compose up -d        # arranca db + ollama y descarga qwen2.5 + nomic-embed-text
+   docker compose logs -f ollama-init   # ver el progreso de descarga (la primera vez tarda)
+   ```
+
+2. **Variables de entorno** (la Opción A del ejemplo ya apunta a local):
+
+   ```bash
+   cp .env.example .env.local && cp .env.example .env
+   # genere AUTH_SECRET: openssl rand -base64 32
+   ```
+
+3. **Esquema + pgvector + datos de ejemplo**:
+
+   ```bash
+   pnpm install
+   pnpm exec prisma migrate dev      # crea las tablas
+   pnpm db:vector                    # crea la columna vector con EMBEDDING_DIMS (768)
+   pnpm import:excel                 # siembra catálogo + tarifas desde el Excel
+   pnpm backfill:embeddings          # genera embeddings con Ollama
+   pnpm dev
+   ```
+
+> **Modelos:** chat = `qwen2.5` (soporta salida estructurada), embeddings =
+> `nomic-embed-text` (768 dims). Si cambia el modelo de embeddings, ajuste
+> `EMBEDDING_DIMS` y vuelva a correr `pnpm db:vector` + `pnpm backfill:embeddings`.
+>
+> **Nota SSO:** Entra ID requiere una app registrada en Azure aunque corra local
+> (el redirect a `localhost:3000` funciona). Sin credenciales válidas no podrá
+> iniciar sesión; el resto del stack (BD, IA local) sí corre.
+
+## Puesta en marcha (nube)
 
 1. Instalar dependencias:
 

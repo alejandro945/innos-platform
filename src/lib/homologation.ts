@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getAnthropic, MODELS } from "@/lib/anthropic";
+import { structuredGenerate, isLlmEnabled } from "@/lib/llm";
 import type { Candidate } from "@/lib/retrieval";
 
 export type ProviderItemInput = {
@@ -32,9 +32,7 @@ export async function decideHomologation(
   item: ProviderItemInput,
   candidates: Candidate[],
 ): Promise<HomologationDecision> {
-  const anthropic = getAnthropic();
-
-  if (!anthropic) {
+  if (!isLlmEnabled()) {
     const top = candidates[0];
     if (top && top.score >= 0.6) {
       return {
@@ -57,52 +55,39 @@ export async function decideHomologation(
     )
     .join("\n");
 
-  const response = await anthropic.messages.create({
-    model: MODELS.reasoning,
-    max_tokens: 700,
-    tools: [
-      {
-        name: "report_decision",
-        description:
-          "Reporta la homologación del ítem del proveedor al catálogo canónico.",
-        input_schema: {
-          type: "object",
+  const raw = await structuredGenerate({
+    tier: "reasoning",
+    maxTokens: 700,
+    toolName: "report_decision",
+    toolDescription:
+      "Reporta la homologación del ítem del proveedor al catálogo canónico.",
+    jsonSchema: {
+      type: "object",
+      properties: {
+        canonicalItemId: {
+          type: ["string", "null"],
+          description: "id del ítem canónico que corresponde, o null si ninguno.",
+        },
+        confidence: { type: "number", description: "Confianza de 0 a 1." },
+        rationale: {
+          type: "string",
+          description: "Justificación breve en español.",
+        },
+        suggestedNewItem: {
+          type: ["object", "null"],
+          description: "Si no hay match, sugiere crear un ítem canónico nuevo.",
           properties: {
-            canonicalItemId: {
-              type: ["string", "null"],
-              description:
-                "id del ítem canónico que corresponde, o null si ninguno.",
-            },
-            confidence: {
-              type: "number",
-              description: "Confianza de 0 a 1.",
-            },
-            rationale: {
+            name: { type: "string" },
+            kind: {
               type: "string",
-              description: "Justificación breve en español.",
-            },
-            suggestedNewItem: {
-              type: ["object", "null"],
-              description:
-                "Si no hay match, sugiere crear un ítem canónico nuevo.",
-              properties: {
-                name: { type: "string" },
-                kind: {
-                  type: "string",
-                  enum: ["SERVICE", "MEDICATION", "DEVICE", "SUPPLY"],
-                },
-              },
+              enum: ["SERVICE", "MEDICATION", "DEVICE", "SUPPLY"],
             },
           },
-          required: ["canonicalItemId", "confidence", "rationale"],
         },
       },
-    ],
-    tool_choice: { type: "tool", name: "report_decision" },
-    messages: [
-      {
-        role: "user",
-        content: `Eres un experto en homologación de servicios y productos de salud en Colombia (CUPS, CUM, ATC).
+      required: ["canonicalItemId", "confidence", "rationale"],
+    },
+    prompt: `Eres un experto en homologación de servicios y productos de salud en Colombia (CUPS, CUM, ATC).
 Determina a qué ítem canónico corresponde el ítem que envía el proveedor.
 
 Reglas:
@@ -118,14 +103,11 @@ Reglas:
 CANDIDATOS DEL CATÁLOGO CANÓNICO:
 ${candidateList || "(no hay candidatos)"}
 
-Reporta tu decisión con la herramienta.`,
-      },
-    ],
+Responde únicamente con el objeto solicitado.`,
   });
 
-  const toolUse = response.content.find((c) => c.type === "tool_use");
-  if (toolUse && toolUse.type === "tool_use") {
-    const parsed = decisionSchema.safeParse(toolUse.input);
+  if (raw) {
+    const parsed = decisionSchema.safeParse(raw);
     if (parsed.success) {
       // Guard against hallucinated ids not in the candidate set.
       if (

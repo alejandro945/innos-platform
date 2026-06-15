@@ -1,5 +1,7 @@
 -- Enables pgvector and adds the embedding column to ItemEmbedding.
--- Run once against the database (or include in a Prisma migration):
+-- PREFERRED: use `pnpm db:vector`, which reads EMBEDDING_DIMS and matches your
+-- embedding model (e.g. 768 for Ollama nomic-embed-text). This file assumes 1536
+-- (OpenAI text-embedding-3-small) and is kept for reference only.
 --   psql "$DIRECT_URL" -f prisma/sql/001_pgvector.sql
 
 CREATE EXTENSION IF NOT EXISTS vector;

@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "import:excel": "tsx scripts/import-excel.ts",
+    "db:vector": "tsx scripts/setup-vector.ts",
     "backfill:embeddings": "tsx scripts/backfill-embeddings.ts"
   },
   "dependencies": {
