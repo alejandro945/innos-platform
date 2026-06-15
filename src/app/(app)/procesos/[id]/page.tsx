@@ -14,6 +14,7 @@ import {
 import type { ColumnMapping } from "@/lib/column-mapping";
 import { SubmitButton } from "@/components/form";
 import { AutoRefresh } from "@/components/auto-refresh";
+import { Stepper, type Step } from "@/components/stepper";
 import { UploadForm } from "./upload-form";
 import { MappingForm } from "./mapping-form";
 import { requestNormalization, promoteUploadRates } from "../actions";
@@ -100,6 +101,53 @@ export default async function ProcessDetailPage({
   const today = new Date().toISOString().slice(0, 10);
   const anyNormalizing = process.uploads.some((u) => u.status === "NORMALIZING");
 
+  const comparisonCount = await prisma.comparison.count({
+    where: { processId: id },
+  });
+
+  // Aggregate progress for the stepper.
+  const agg = [...counts.values()].reduce(
+    (a, c) => ({
+      mapped: a.mapped + c.mapped,
+      approved: a.approved + c.auto,
+      pending: a.pending + c.pending + c.noMatch,
+    }),
+    { mapped: 0, approved: 0, pending: 0 },
+  );
+  const totalPromoted = [...promoted.values()].reduce((a, n) => a + n, 0);
+  const mappedColumns = process.uploads.some((u) =>
+    ["READY", "NORMALIZING", "FAILED"].includes(u.status),
+  );
+
+  const stepDefs: { label: string; done: boolean; hint?: string }[] = [
+    { label: "Cargar archivo", done: process.uploads.length > 0 },
+    { label: "Mapear columnas", done: mappedColumns },
+    { label: "Homologar", done: agg.mapped > 0 },
+    {
+      label: "Revisar",
+      done: agg.mapped > 0 && agg.pending === 0,
+      hint: agg.pending > 0 ? `${agg.pending} pendientes` : undefined,
+    },
+    { label: "Comparar", done: comparisonCount > 0 },
+    {
+      label: "Cargar al repositorio",
+      done: totalPromoted > 0,
+      hint:
+        agg.approved > 0 && totalPromoted === 0
+          ? `${agg.approved} listas`
+          : undefined,
+    },
+  ];
+  let currentAssigned = false;
+  const steps: Step[] = stepDefs.map((s) => {
+    if (s.done) return { ...s, state: "done" };
+    if (!currentAssigned) {
+      currentAssigned = true;
+      return { ...s, state: "current" };
+    }
+    return { ...s, state: "todo" };
+  });
+
   return (
     <div>
       {anyNormalizing && <AutoRefresh />}
@@ -122,6 +170,25 @@ export default async function ProcessDetailPage({
           </div>
         }
       />
+
+      {/* Guided flow */}
+      <Card className="mb-6">
+        <Stepper steps={steps} />
+        {agg.pending > 0 && (
+          <div className="mt-4 flex items-center justify-between rounded-lg bg-amber-50 p-3">
+            <p className="text-sm text-amber-900">
+              {agg.pending} homologación(es) requieren tu revisión para poder
+              comparar y cargar tarifas.
+            </p>
+            <Link
+              href={`/revision?proceso=${process.id}`}
+              className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700"
+            >
+              Revisar →
+            </Link>
+          </div>
+        )}
+      </Card>
 
       {canManage && (
         <Card className="mb-6">
@@ -234,7 +301,7 @@ export default async function ProcessDetailPage({
                           </span>
                           {c.pending + c.noMatch > 0 && (
                             <Link
-                              href="/revision"
+                              href={`/revision?proceso=${process.id}`}
                               className="ml-auto text-sm font-medium text-slate-700 hover:text-slate-900"
                             >
                               Ir a revisión →

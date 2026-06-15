@@ -1,8 +1,11 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRoles } from "@/lib/session";
+import { inferKind } from "@/lib/infer-kind";
+import { embedCanonicalItem } from "@/lib/embed-items";
 
 async function loadMapping(mappingId: string, organizationId: string) {
   return prisma.itemMapping.findFirst({
@@ -53,6 +56,72 @@ export async function approveMapping(formData: FormData) {
       },
     }),
   ]);
+
+  revalidatePath("/revision");
+}
+
+/**
+ * Create a new canonical item from the provider item and approve the mapping
+ * to it. Unblocks providers whose services aren't yet in the catalog.
+ */
+export async function createCanonicalAndApprove(formData: FormData) {
+  const session = await requireRoles("ADMIN", "PROCUREMENT_ANALYST", "REVIEWER");
+  const mappingId = String(formData.get("mappingId"));
+
+  const mapping = await prisma.itemMapping.findFirst({
+    where: { id: mappingId, providerItem: { provider: { organizationId: session.organizationId } } },
+    include: { providerItem: true },
+  });
+  if (!mapping) return;
+
+  const name = mapping.providerItem.rawName.trim();
+  const rawCode = mapping.providerItem.rawCode?.trim() || null;
+  const canonicalCode = `INO-${randomUUID().slice(0, 8).toUpperCase()}`;
+
+  const created = await prisma.canonicalItem.create({
+    data: {
+      organizationId: session.organizationId,
+      kind: inferKind(name),
+      canonicalCode,
+      normativeCode: rawCode,
+      name,
+      isApproved: true,
+      codes: rawCode
+        ? { create: [{ system: "CUPS", code: rawCode }] }
+        : undefined,
+    },
+  });
+
+  await prisma.$transaction([
+    prisma.itemMapping.update({
+      where: { id: mappingId },
+      data: {
+        canonicalItemId: created.id,
+        status: "APPROVED",
+        method: "HUMAN",
+        confidence: 1,
+        reviewedById: session.userId,
+        reviewedAt: new Date(),
+      },
+    }),
+    prisma.auditLog.create({
+      data: {
+        organizationId: session.organizationId,
+        actorId: session.userId,
+        action: "mapping.created_canonical",
+        entityType: "ItemMapping",
+        entityId: mappingId,
+        after: { canonicalItemId: created.id, name },
+      },
+    }),
+  ]);
+
+  // Best-effort embedding for future retrieval.
+  try {
+    await embedCanonicalItem(created.id);
+  } catch (e) {
+    console.warn("Embedding skipped:", (e as Error).message);
+  }
 
   revalidatePath("/revision");
 }

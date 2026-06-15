@@ -107,7 +107,24 @@ export default async function ComparacionPage({
             )}
           </div>
 
-          <ComparisonView lines={comparison.lines} />
+          {comparison.lines.length === 0 ? (
+            <Card className="bg-amber-50">
+              <p className="text-sm text-amber-900">
+                Aún no hay ítems homologados y <strong>aprobados</strong> en este
+                proceso. Vaya a{" "}
+                <Link
+                  href={`/revision?proceso=${id}`}
+                  className="font-medium underline"
+                >
+                  Revisión
+                </Link>{" "}
+                para aprobar las coincidencias (o crear ítems canónicos nuevos) y
+                luego <strong>Regenere</strong> la comparación.
+              </p>
+            </Card>
+          ) : (
+            <ComparisonView lines={comparison.lines} />
+          )}
         </>
       )}
     </div>
