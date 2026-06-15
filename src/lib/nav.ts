@@ -6,6 +6,7 @@ import {
   Building2,
   BookMarked,
   BarChart3,
+  Sparkles,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -54,6 +55,12 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/catalogo",
     icon: BookMarked,
     description: "Ítems y códigos estándar",
+  },
+  {
+    label: "Análisis",
+    href: "/analisis",
+    icon: Sparkles,
+    description: "Anomalías, ahorro y búsqueda IA",
   },
   {
     label: "Reportes",
