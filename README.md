@@ -69,9 +69,11 @@ Stack 100% local, sin claves de nube. Requiere Docker y pnpm.
 > `nomic-embed-text` (768 dims). Si cambia el modelo de embeddings, ajuste
 > `EMBEDDING_DIMS` y vuelva a correr `pnpm db:vector` + `pnpm backfill:embeddings`.
 >
-> **Nota SSO:** Entra ID requiere una app registrada en Azure aunque corra local
-> (el redirect a `localhost:3000` funciona). Sin credenciales válidas no podrá
-> iniciar sesión; el resto del stack (BD, IA local) sí corre.
+> **Login local sin SSO:** con `LOCAL_ADMIN_EMAIL` + `LOCAL_ADMIN_PASSWORD` en
+> el entorno (ya vienen en `.env.example`), la pantalla de login muestra un
+> formulario de administrador (usuario/contraseña) que entra con rol `ADMIN`,
+> sin necesidad de Azure. Déjelos vacíos en producción para deshabilitarlo.
+> El botón de Microsoft (Entra ID) sigue disponible en paralelo.
 
 ## Puesta en marcha (nube)
 
