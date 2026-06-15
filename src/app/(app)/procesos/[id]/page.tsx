@@ -240,12 +240,34 @@ export default async function ProcessDetailPage({
                   />
                 )}
 
-                {upload.status === "NORMALIZING" && (
-                  <p className="flex items-center gap-2 text-sm text-blue-600">
-                    <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
-                    Homologando ítems con IA… se actualiza automáticamente.
-                  </p>
-                )}
+                {upload.status === "NORMALIZING" &&
+                  (() => {
+                    const done = counts.get(upload.id)?.mapped ?? 0;
+                    const total = upload._count.providerItems || 1;
+                    const pct = Math.min(100, Math.round((done / total) * 100));
+                    return (
+                      <div>
+                        <div className="mb-1 flex items-center justify-between text-sm text-blue-700">
+                          <span className="flex items-center gap-2">
+                            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
+                            Homologando ítems con IA…
+                          </span>
+                          <span className="font-medium tabular-nums">
+                            {done}/{total} · {pct}%
+                          </span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-blue-100">
+                          <div
+                            className="h-full rounded-full bg-blue-600 transition-all duration-500"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <p className="mt-1 text-xs text-slate-400">
+                          Se actualiza automáticamente.
+                        </p>
+                      </div>
+                    );
+                  })()}
 
                 {upload.status === "FAILED" && (
                   <div className="flex items-center justify-between rounded-lg bg-rose-50 p-3">
