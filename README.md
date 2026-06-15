@@ -4,9 +4,6 @@ Plataforma web para centralizar las tarifas de proveedores, **estandarizar
 (homologar) sus ítems con IA** y comparar precios en cada proceso de
 contratación.
 
-> UI en español · código en inglés. Spec funcional completo en
-> [`../SPEC_PLATAFORMA_INOOS.md`](../SPEC_PLATAFORMA_INOOS.md).
-
 ---
 
 ## Arquitectura
