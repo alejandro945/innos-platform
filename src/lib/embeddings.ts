@@ -4,6 +4,8 @@
  * configured so callers fall back to lexical retrieval.
  */
 
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
+
 export type EmbeddingsProvider = "openai" | "ollama" | "none";
 
 /** Vector dimension — MUST match the pgvector column. Configure per model. */
@@ -38,15 +40,21 @@ function ollamaBaseUrl(): string {
   return process.env.OLLAMA_BASE_URL || "http://localhost:11434";
 }
 
+const EMBED_TIMEOUT_MS = Number(process.env.EMBED_TIMEOUT_MS) || 30_000;
+
 async function openaiEmbed(inputs: string[]): Promise<(number[] | null)[]> {
-  const res = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+  const res = await fetchWithTimeout(
+    "https://api.openai.com/v1/embeddings",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({ model: OPENAI_MODEL, input: inputs }),
     },
-    body: JSON.stringify({ model: OPENAI_MODEL, input: inputs }),
-  });
+    EMBED_TIMEOUT_MS,
+  );
   if (!res.ok) {
     console.error("OpenAI embeddings failed:", res.status);
     return inputs.map(() => null);
@@ -56,11 +64,15 @@ async function openaiEmbed(inputs: string[]): Promise<(number[] | null)[]> {
 }
 
 async function ollamaEmbed(inputs: string[]): Promise<(number[] | null)[]> {
-  const res = await fetch(`${ollamaBaseUrl()}/api/embed`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: OLLAMA_MODEL, input: inputs }),
-  });
+  const res = await fetchWithTimeout(
+    `${ollamaBaseUrl()}/api/embed`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: OLLAMA_MODEL, input: inputs }),
+    },
+    EMBED_TIMEOUT_MS,
+  );
   if (!res.ok) {
     console.error("Ollama embeddings failed:", res.status);
     return inputs.map(() => null);

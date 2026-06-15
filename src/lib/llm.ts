@@ -1,4 +1,7 @@
 import { getAnthropic, MODELS } from "@/lib/anthropic";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
+
+const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS) || 90_000;
 
 export type AiTier = "fast" | "reasoning";
 export type LlmProvider = "anthropic" | "ollama" | "none";
@@ -85,18 +88,22 @@ async function runAnthropic(
 async function runOllama(
   req: StructuredRequest,
 ): Promise<Record<string, unknown> | null> {
-  const res = await fetch(`${ollamaBaseUrl()}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: ollamaModel(),
-      stream: false,
-      // Ollama supports a JSON Schema as `format` for structured output.
-      format: req.jsonSchema,
-      options: { temperature: 0 },
-      messages: [{ role: "user", content: req.prompt }],
-    }),
-  });
+  const res = await fetchWithTimeout(
+    `${ollamaBaseUrl()}/api/chat`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: ollamaModel(),
+        stream: false,
+        // Ollama supports a JSON Schema as `format` for structured output.
+        format: req.jsonSchema,
+        options: { temperature: 0 },
+        messages: [{ role: "user", content: req.prompt }],
+      }),
+    },
+    OLLAMA_TIMEOUT_MS,
+  );
   if (!res.ok) {
     console.error("Ollama chat failed:", res.status, await res.text());
     return null;

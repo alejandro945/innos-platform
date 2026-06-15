@@ -234,6 +234,7 @@ enum UploadStatus {
   PARSING
   MAPPING
   NORMALIZING
+  PAUSED
   READY
   FAILED
 }

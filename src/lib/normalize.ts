@@ -151,16 +151,34 @@ export async function finalizeUpload(
   return { total, autoApproved, pendingReview, noMatch };
 }
 
-/** Normalize every provider item in an upload, then finalize. */
+/**
+ * Normalize the pending items of an upload (those without a mapping yet) and
+ * finalize. Resumable: re-running only processes what's left. Stops early if
+ * the upload is paused, leaving progress intact.
+ */
 export async function normalizeUpload(
   uploadId: string,
-): Promise<NormalizeSummary> {
+): Promise<NormalizeSummary | null> {
   const items = await prisma.providerItem.findMany({
-    where: { uploadId },
+    where: { uploadId, mapping: { is: null } },
     select: { id: true },
   });
+
   for (const it of items) {
-    await normalizeProviderItem(it.id);
+    // Checkpoint: stop if paused from another request.
+    const u = await prisma.processUpload.findUnique({
+      where: { id: uploadId },
+      select: { status: true },
+    });
+    if (u?.status === "PAUSED") return null;
+
+    try {
+      await normalizeProviderItem(it.id);
+    } catch (e) {
+      // A single failed item (e.g. provider timeout) shouldn't kill the run.
+      console.error(`normalizeProviderItem ${it.id} failed:`, e);
+    }
   }
+
   return finalizeUpload(uploadId);
 }

@@ -12,14 +12,18 @@ import {
   UPLOAD_STATUS_LABELS,
 } from "@/lib/process-status";
 import type { ColumnMapping } from "@/lib/column-mapping";
-import { SubmitButton } from "@/components/form";
 import { ActionButton } from "@/components/action-button";
+import { MutateButton } from "@/components/mutate-button";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { Modal } from "@/components/modal";
 import { Stepper, type Step } from "@/components/stepper";
 import { UploadForm } from "./upload-form";
 import { MappingForm } from "./mapping-form";
-import { requestNormalization, promoteUploadRates } from "../actions";
+import {
+  requestNormalization,
+  promoteUploadRates,
+  pauseNormalization,
+} from "../actions";
 
 export default async function ProcessDetailPage({
   params,
@@ -272,9 +276,59 @@ export default async function ProcessDetailPage({
                             style={{ width: `${pct}%` }}
                           />
                         </div>
-                        <p className="mt-1 text-xs text-slate-400">
-                          Se actualiza automáticamente.
-                        </p>
+                        <div className="mt-2 flex items-center justify-between">
+                          <p className="text-xs text-slate-400">
+                            Se actualiza automáticamente.
+                          </p>
+                          {canManage && (
+                            <div className="flex gap-2">
+                              <MutateButton
+                                action={pauseNormalization}
+                                fields={{ uploadId: upload.id }}
+                                variant="secondary"
+                                successMessage="Homologación pausada."
+                              >
+                                Pausar
+                              </MutateButton>
+                              <MutateButton
+                                action={requestNormalization}
+                                fields={{ uploadId: upload.id }}
+                                variant="secondary"
+                                successMessage="Reanudando…"
+                                title="Reanudar si parece detenido"
+                              >
+                                Reanudar
+                              </MutateButton>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                {upload.status === "PAUSED" &&
+                  (() => {
+                    const done = counts.get(upload.id)?.mapped ?? 0;
+                    const total = upload._count.providerItems || 1;
+                    const pct = Math.min(100, Math.round((done / total) * 100));
+                    return (
+                      <div className="rounded-lg bg-amber-50 p-3">
+                        <div className="mb-2 flex items-center justify-between text-sm text-amber-900">
+                          <span>Homologación pausada</span>
+                          <span className="font-medium tabular-nums">
+                            {done}/{total} · {pct}%
+                          </span>
+                        </div>
+                        {canManage && (
+                          <MutateButton
+                            action={requestNormalization}
+                            fields={{ uploadId: upload.id }}
+                            variant="primary"
+                            successMessage="Reanudando…"
+                          >
+                            Reanudar
+                          </MutateButton>
+                        )}
                       </div>
                     );
                   })()}
@@ -282,15 +336,17 @@ export default async function ProcessDetailPage({
                 {upload.status === "FAILED" && (
                   <div className="flex items-center justify-between rounded-lg bg-rose-50 p-3">
                     <p className="text-sm text-rose-700">
-                      La homologación falló. Puede reintentar.
+                      La homologación falló. Puede reanudar desde donde quedó.
                     </p>
                     {canManage && (
-                      <form action={requestNormalization}>
-                        <input type="hidden" name="uploadId" value={upload.id} />
-                        <SubmitButton pendingLabel="Reintentando…">
-                          Reintentar
-                        </SubmitButton>
-                      </form>
+                      <MutateButton
+                        action={requestNormalization}
+                        fields={{ uploadId: upload.id }}
+                        variant="primary"
+                        successMessage="Reanudando…"
+                      >
+                        Reintentar
+                      </MutateButton>
                     )}
                   </div>
                 )}
@@ -307,16 +363,14 @@ export default async function ProcessDetailPage({
                               homologar.
                             </p>
                             {canManage && (
-                              <form action={requestNormalization}>
-                                <input
-                                  type="hidden"
-                                  name="uploadId"
-                                  value={upload.id}
-                                />
-                                <SubmitButton pendingLabel="Iniciando…">
-                                  Iniciar homologación
-                                </SubmitButton>
-                              </form>
+                              <MutateButton
+                                action={requestNormalization}
+                                fields={{ uploadId: upload.id }}
+                                variant="primary"
+                                successMessage="Homologación iniciada."
+                              >
+                                Iniciar homologación
+                              </MutateButton>
                             )}
                           </div>
                         );

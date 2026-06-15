@@ -247,10 +247,12 @@ export async function confirmMapping(formData: FormData) {
 }
 
 /**
- * Start homologation for an upload. Uses Inngest (durable) when configured,
- * otherwise runs the pipeline inline (suitable for dev / small files).
+ * Start/resume homologation for an upload. Uses Inngest (durable) when
+ * configured, otherwise runs inline. Resumable: only processes pending items.
  */
-export async function requestNormalization(formData: FormData) {
+export async function requestNormalization(
+  formData: FormData,
+): Promise<ActionResult> {
   const session = await requireRoles("ADMIN", "PROCUREMENT_ANALYST");
   const uploadId = String(formData.get("uploadId"));
 
@@ -258,7 +260,7 @@ export async function requestNormalization(formData: FormData) {
     where: { id: uploadId, process: { organizationId: session.organizationId } },
     select: { id: true, processId: true },
   });
-  if (!upload) return;
+  if (!upload) return { ok: false, message: "Archivo no encontrado." };
 
   // Mark as normalizing immediately so the UI shows progress and the action
   // returns fast (the heavy work runs asynchronously).
@@ -285,6 +287,29 @@ export async function requestNormalization(formData: FormData) {
   }
 
   revalidatePath(`/procesos/${upload.processId}`);
+  return { ok: true, message: "Homologación en curso." };
+}
+
+/** Pause a running homologation; the worker stops after the current item. */
+export async function pauseNormalization(
+  formData: FormData,
+): Promise<ActionResult> {
+  const session = await requireRoles("ADMIN", "PROCUREMENT_ANALYST");
+  const uploadId = String(formData.get("uploadId"));
+  const upload = await prisma.processUpload.findFirst({
+    where: { id: uploadId, process: { organizationId: session.organizationId } },
+    select: { id: true, processId: true, status: true },
+  });
+  if (!upload) return { ok: false, message: "Archivo no encontrado." };
+  if (upload.status !== "NORMALIZING") {
+    return { ok: false, message: "El archivo no está en proceso." };
+  }
+  await prisma.processUpload.update({
+    where: { id: uploadId },
+    data: { status: "PAUSED" },
+  });
+  revalidatePath(`/procesos/${upload.processId}`);
+  return { ok: true, message: "Homologación pausada." };
 }
 
 /**

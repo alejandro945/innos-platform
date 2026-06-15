@@ -14,7 +14,11 @@ let client: Anthropic | null = null;
 export function getAnthropic(): Anthropic | null {
   if (!process.env.ANTHROPIC_API_KEY) return null;
   if (!client) {
-    client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    client = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      timeout: Number(process.env.ANTHROPIC_TIMEOUT_MS) || 90_000,
+      maxRetries: 2,
+    });
   }
   return client;
 }

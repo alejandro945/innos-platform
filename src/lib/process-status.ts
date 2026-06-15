@@ -21,6 +21,7 @@ export const UPLOAD_STATUS_LABELS: Record<UploadStatus, string> = {
   PARSING: "Procesando",
   MAPPING: "Mapeo pendiente",
   NORMALIZING: "Normalizando",
+  PAUSED: "Pausado",
   READY: "Listo",
   FAILED: "Error",
 };
