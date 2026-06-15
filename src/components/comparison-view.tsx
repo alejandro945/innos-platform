@@ -61,9 +61,8 @@ export function ComparisonView({ lines }: { lines: ComparisonLineRow[] }) {
                 .slice()
                 .sort((a, b) => (a.value ?? Infinity) - (b.value ?? Infinity))
                 .map((opt, i) => {
-                  const isBest =
-                    opt.providerId === line.bestProviderId &&
-                    opt.value !== null;
+                  // Sorted ascending: only the first priced row is the best.
+                  const isBest = i === 0 && opt.value !== null;
                   return (
                     <tr key={`${opt.providerId}-${i}`} className={cn(isBest && "bg-emerald-50")}>
                       <td className="px-4 py-2 text-slate-900">

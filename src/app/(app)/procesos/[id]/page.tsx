@@ -15,6 +15,7 @@ import type { ColumnMapping } from "@/lib/column-mapping";
 import { SubmitButton } from "@/components/form";
 import { ActionButton } from "@/components/action-button";
 import { AutoRefresh } from "@/components/auto-refresh";
+import { Modal } from "@/components/modal";
 import { Stepper, type Step } from "@/components/stepper";
 import { UploadForm } from "./upload-form";
 import { MappingForm } from "./mapping-form";
@@ -191,19 +192,26 @@ export default async function ProcessDetailPage({
         )}
       </Card>
 
-      {canManage && (
-        <Card className="mb-6">
-          <h2 className="mb-4 text-base font-semibold text-slate-900">
-            Cargar archivo de proveedor
-          </h2>
-          <UploadForm processId={process.id} providers={providerOptions} />
-        </Card>
-      )}
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-base font-semibold text-slate-900">
+          Archivos del proceso
+        </h2>
+        {canManage && (
+          <Modal
+            triggerLabel="+ Cargar archivo"
+            title="Cargar archivo de proveedor"
+          >
+            <UploadForm processId={process.id} providers={providerOptions} />
+          </Modal>
+        )}
+      </div>
 
       {process.uploads.length === 0 ? (
         <Card>
           <p className="text-sm text-slate-500">
-            Aún no hay archivos cargados en este proceso.
+            Aún no hay archivos cargados. Use{" "}
+            <strong>“+ Cargar archivo”</strong> para subir el tarifario de un
+            proveedor.
           </p>
         </Card>
       ) : (
