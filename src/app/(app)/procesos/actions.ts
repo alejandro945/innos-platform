@@ -326,6 +326,7 @@ export async function promoteUploadRates(formData: FormData) {
   );
   const uploadId = String(formData.get("uploadId"));
   const validFromRaw = String(formData.get("validFrom") || "");
+  const validToRaw = String(formData.get("validTo") || "");
 
   const upload = await prisma.processUpload.findFirst({
     where: { id: uploadId, process: { organizationId: session.organizationId } },
@@ -346,6 +347,7 @@ export async function promoteUploadRates(formData: FormData) {
   });
 
   const validFrom = validFromRaw ? new Date(validFromRaw) : new Date();
+  const validTo = validToRaw ? new Date(validToRaw) : null;
 
   await prisma.$transaction(async (tx) => {
     // Replace any rates previously promoted from this same upload.
@@ -362,6 +364,7 @@ export async function promoteUploadRates(formData: FormData) {
           value: item.rawPrice,
           exclusions: item.exclusions,
           validFrom,
+          validTo,
           sourceUploadId: uploadId,
         },
       });

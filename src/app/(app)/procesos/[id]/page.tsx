@@ -488,6 +488,14 @@ export default async function ProcessDetailPage({
                                   className="ml-2 rounded-md border border-emerald-300 bg-white px-2 py-1 text-xs"
                                 />
                               </label>
+                              <label className="text-xs text-emerald-900">
+                                hasta
+                                <input
+                                  type="date"
+                                  name="validTo"
+                                  className="ml-2 rounded-md border border-emerald-300 bg-white px-2 py-1 text-xs"
+                                />
+                              </label>
                               <ActionButton variant="success">
                                 {promotedCount > 0
                                   ? "Recargar al repositorio"
