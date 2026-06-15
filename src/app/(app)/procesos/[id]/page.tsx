@@ -221,6 +221,7 @@ export default async function ProcessDetailPage({
               mapping?: ColumnMapping;
               headers?: string[];
               method?: string;
+              rows?: Record<string, unknown>[];
             };
             return (
               <Card key={upload.id}>
@@ -245,6 +246,7 @@ export default async function ProcessDetailPage({
                     headers={cm.headers}
                     mapping={cm.mapping}
                     method={cm.method}
+                    sample={cm.rows?.slice(0, 3) ?? []}
                   />
                 )}
 

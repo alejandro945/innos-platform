@@ -5,6 +5,7 @@ import {
   TrendingDown,
   Building2,
   ArrowRight,
+  Check,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
@@ -44,6 +45,21 @@ export default async function DashboardPage() {
     expiringRates(orgId, 30),
   ]);
 
+  const [catalogCount, providerCount, processCount] = await Promise.all([
+    prisma.canonicalItem.count({ where: { organizationId: orgId } }),
+    prisma.provider.count({ where: { organizationId: orgId } }),
+    prisma.procurementProcess.count({ where: { organizationId: orgId } }),
+  ]);
+
+  const onboarding = [
+    { label: "Crea tu catálogo canónico", href: "/catalogo", done: catalogCount > 0 },
+    { label: "Agrega proveedores", href: "/proveedores", done: providerCount > 0 },
+    { label: "Carga tarifas al repositorio", href: "/tarifas", done: rateCount > 0 },
+    { label: "Inicia un proceso de contratación", href: "/procesos", done: processCount > 0 },
+  ];
+  const onboardingDone = onboarding.filter((s) => s.done).length;
+  const showOnboarding = onboardingDone < onboarding.length;
+
   const stats = [
     {
       label: "Procesos activos",
@@ -77,6 +93,51 @@ export default async function DashboardPage() {
         title={`Hola${firstName ? `, ${firstName}` : ""}`}
         subtitle="Resumen de la actividad de contratación y comparación de tarifas."
       />
+
+      {showOnboarding && (
+        <Card className="mb-6 border-slate-300">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-900">
+              Primeros pasos
+            </h2>
+            <span className="text-xs text-slate-400">
+              {onboardingDone}/{onboarding.length}
+            </span>
+          </div>
+          <ol className="space-y-2">
+            {onboarding.map((s) => (
+              <li key={s.href}>
+                <Link
+                  href={s.href}
+                  className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-50"
+                >
+                  <span
+                    className={
+                      s.done
+                        ? "flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white"
+                        : "flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 text-xs text-slate-400"
+                    }
+                  >
+                    {s.done && <Check className="h-3 w-3" />}
+                  </span>
+                  <span
+                    className={
+                      s.done
+                        ? "text-sm text-slate-400 line-through"
+                        : "text-sm font-medium text-slate-700"
+                    }
+                  >
+                    {s.label}
+                  </span>
+                  {!s.done && (
+                    <ArrowRight className="ml-auto h-4 w-4 text-slate-300" />
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ol>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((s) => (

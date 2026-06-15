@@ -11,11 +11,13 @@ export function MappingForm({
   headers,
   mapping,
   method,
+  sample = [],
 }: {
   uploadId: string;
   headers: string[];
   mapping: ColumnMapping;
   method?: string;
+  sample?: Record<string, unknown>[];
 }) {
   return (
     <form action={confirmMapping} className="space-y-4">
@@ -25,6 +27,39 @@ export function MappingForm({
           ? "Mapeo sugerido por IA. Revíselo y confírmelo."
           : "Mapeo sugerido automáticamente. Revíselo y confírmelo."}
       </p>
+
+      {sample.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full text-xs">
+            <thead className="bg-slate-50 text-left text-slate-500">
+              <tr>
+                {headers.map((h) => (
+                  <th key={h} className="whitespace-nowrap px-3 py-2 font-medium">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {sample.map((row, i) => (
+                <tr key={i}>
+                  {headers.map((h) => (
+                    <td
+                      key={h}
+                      className="max-w-48 truncate px-3 py-1.5 text-slate-600"
+                    >
+                      {row[h] === null || row[h] === undefined
+                        ? ""
+                        : String(row[h])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {MAPPING_FIELDS.map((field) => (
           <label key={field} className="block">
