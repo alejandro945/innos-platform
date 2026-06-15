@@ -12,6 +12,8 @@ import {
   UPLOAD_STATUS_LABELS,
 } from "@/lib/process-status";
 import type { ColumnMapping } from "@/lib/column-mapping";
+import { SubmitButton } from "@/components/form";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { UploadForm } from "./upload-form";
 import { MappingForm } from "./mapping-form";
 import { requestNormalization, promoteUploadRates } from "../actions";
@@ -96,9 +98,11 @@ export default async function ProcessDetailPage({
   }
 
   const today = new Date().toISOString().slice(0, 10);
+  const anyNormalizing = process.uploads.some((u) => u.status === "NORMALIZING");
 
   return (
     <div>
+      {anyNormalizing && <AutoRefresh />}
       <PageHeader
         title={process.name}
         subtitle={process.description ?? undefined}
@@ -169,9 +173,26 @@ export default async function ProcessDetailPage({
                 )}
 
                 {upload.status === "NORMALIZING" && (
-                  <p className="text-sm text-blue-600">
-                    Homologando ítems con IA… recargue en unos momentos.
+                  <p className="flex items-center gap-2 text-sm text-blue-600">
+                    <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
+                    Homologando ítems con IA… se actualiza automáticamente.
                   </p>
+                )}
+
+                {upload.status === "FAILED" && (
+                  <div className="flex items-center justify-between rounded-lg bg-rose-50 p-3">
+                    <p className="text-sm text-rose-700">
+                      La homologación falló. Puede reintentar.
+                    </p>
+                    {canManage && (
+                      <form action={requestNormalization}>
+                        <input type="hidden" name="uploadId" value={upload.id} />
+                        <SubmitButton pendingLabel="Reintentando…">
+                          Reintentar
+                        </SubmitButton>
+                      </form>
+                    )}
+                  </div>
                 )}
 
                 {upload.status === "READY" && (
@@ -192,12 +213,9 @@ export default async function ProcessDetailPage({
                                   name="uploadId"
                                   value={upload.id}
                                 />
-                                <button
-                                  type="submit"
-                                  className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-                                >
+                                <SubmitButton pendingLabel="Iniciando…">
                                   Iniciar homologación
-                                </button>
+                                </SubmitButton>
                               </form>
                             )}
                           </div>

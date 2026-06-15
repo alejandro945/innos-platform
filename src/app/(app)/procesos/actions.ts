@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
@@ -211,6 +212,8 @@ export async function requestNormalization(formData: FormData) {
   });
   if (!upload) return;
 
+  // Mark as normalizing immediately so the UI shows progress and the action
+  // returns fast (the heavy work runs asynchronously).
   await prisma.processUpload.update({
     where: { id: uploadId },
     data: { status: "NORMALIZING" },
@@ -219,8 +222,18 @@ export async function requestNormalization(formData: FormData) {
   if (process.env.INNGEST_EVENT_KEY) {
     await inngest.send({ name: EVENTS.normalizeUpload, data: { uploadId } });
   } else {
-    // Inline fallback (no queue configured).
-    await normalizeUpload(uploadId);
+    // No queue configured: run after the response is sent (dev / small files).
+    after(async () => {
+      try {
+        await normalizeUpload(uploadId);
+      } catch (e) {
+        console.error("normalizeUpload failed:", e);
+        await prisma.processUpload.update({
+          where: { id: uploadId },
+          data: { status: "FAILED" },
+        });
+      }
+    });
   }
 
   revalidatePath(`/procesos/${upload.processId}`);
