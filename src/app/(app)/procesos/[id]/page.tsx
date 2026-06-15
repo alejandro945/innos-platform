@@ -1,10 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FileText } from "lucide-react";
+import {
+  FileText,
+  AlertTriangle,
+  Loader2,
+  Download,
+  Printer,
+  RefreshCw,
+} from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { hasAnyRole } from "@/lib/rbac";
-import { PageHeader, Card } from "@/components/ui";
+import { PageHeader, Card, StatCard } from "@/components/ui";
+import { ComparisonView } from "@/components/comparison-view";
+import { getLatestComparison } from "@/lib/comparison";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
   PROCESS_STATUS_LABELS,
@@ -23,14 +32,20 @@ import {
   requestNormalization,
   promoteUploadRates,
   pauseNormalization,
+  createComparison,
 } from "../actions";
 
 export default async function ProcessDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string; dedupe?: string }>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
+  const tab = sp.tab === "comparacion" ? "comparacion" : "archivos";
+  const dedupe = sp.dedupe === "1";
   const session = await requireSession();
   const canManage = hasAnyRole(session.roles, "ADMIN", "PROCUREMENT_ANALYST");
 
@@ -110,6 +125,7 @@ export default async function ProcessDetailPage({
   const comparisonCount = await prisma.comparison.count({
     where: { processId: id },
   });
+  const comparison = await getLatestComparison(id, session.organizationId);
 
   // Aggregate progress for the stepper.
   const agg = [...counts.values()].reduce(
@@ -154,6 +170,11 @@ export default async function ProcessDetailPage({
     return { ...s, state: "todo" };
   });
 
+  const comparisonReady = !!comparison && comparison.lines.length > 0;
+  const comparacionWarn = !comparisonReady || agg.pending > 0;
+  const archivosWarn = process.uploads.some((u) => u.status === "FAILED");
+  const tabLink = (t: string) => `/procesos/${process.id}?tab=${t}`;
+
   return (
     <div>
       {anyNormalizing && <AutoRefresh />}
@@ -161,19 +182,11 @@ export default async function ProcessDetailPage({
         title={process.name}
         subtitle={process.description ?? undefined}
         action={
-          <div className="flex items-center gap-3">
-            <span
-              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${PROCESS_STATUS_STYLES[process.status]}`}
-            >
-              {PROCESS_STATUS_LABELS[process.status]}
-            </span>
-            <Link
-              href={`/procesos/${process.id}/comparacion`}
-              className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              Ver comparación
-            </Link>
-          </div>
+          <span
+            className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${PROCESS_STATUS_STYLES[process.status]}`}
+          >
+            {PROCESS_STATUS_LABELS[process.status]}
+          </span>
         }
       />
 
@@ -196,6 +209,48 @@ export default async function ProcessDetailPage({
         )}
       </Card>
 
+      {/* Tabs */}
+      <div className="mb-6 flex gap-1 border-b border-slate-200">
+        <Link
+          href={tabLink("archivos")}
+          className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium ${
+            tab === "archivos"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Archivos
+          {anyNormalizing ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
+          ) : archivosWarn ? (
+            <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
+          ) : null}
+        </Link>
+        <Link
+          href={tabLink("comparacion")}
+          className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium ${
+            tab === "comparacion"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Comparación
+          {comparacionWarn && (
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+          )}
+        </Link>
+      </div>
+
+      {tab === "comparacion" ? (
+        <ComparisonTab
+          processId={process.id}
+          comparison={comparison}
+          dedupe={dedupe}
+          pending={agg.pending}
+          canManage={canManage}
+        />
+      ) : (
+        <>
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-base font-semibold text-slate-900">
           Archivos del proceso
@@ -484,6 +539,116 @@ export default async function ProcessDetailPage({
             );
           })}
         </div>
+      )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Comparison tab: KPIs + actions + table, or generate prompt. */
+function ComparisonTab({
+  processId,
+  comparison,
+  dedupe,
+  pending,
+  canManage,
+}: {
+  processId: string;
+  comparison: Awaited<ReturnType<typeof getLatestComparison>>;
+  dedupe: boolean;
+  pending: number;
+  canManage: boolean;
+}) {
+  if (!comparison) {
+    return (
+      <Card className="flex flex-col items-center justify-center py-16 text-center">
+        <h3 className="text-base font-medium text-slate-900">
+          Sin comparación generada
+        </h3>
+        <p className="mt-1 max-w-md text-sm text-slate-500">
+          Genere la comparación con los ítems homologados y aprobados de este
+          proceso.
+        </p>
+        {canManage && (
+          <form action={createComparison} className="mt-4">
+            <input type="hidden" name="processId" value={processId} />
+            <ActionButton variant="primary">Generar comparación</ActionButton>
+          </form>
+        )}
+      </Card>
+    );
+  }
+
+  return (
+    <div>
+      {pending > 0 && (
+        <Card className="mb-4 bg-amber-50">
+          <p className="text-sm text-amber-900">
+            Hay {pending} homologación(es) sin aprobar. Apruébalas en{" "}
+            <Link
+              href={`/revision?proceso=${processId}`}
+              className="font-medium underline"
+            >
+              Revisión
+            </Link>{" "}
+            y vuelve a <strong>Regenerar</strong> para incluirlas.
+          </p>
+        </Card>
+      )}
+
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard label="Ítems comparados" value={String(comparison.lines.length)} />
+        <StatCard
+          label="Ahorro potencial"
+          value={formatCurrency(String(comparison.totalSavings))}
+          hint="Suma de (máx − mín) por ítem"
+        />
+        <StatCard label="Generada" value={formatDate(comparison.generatedAt)} />
+      </div>
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        <a
+          href={`/procesos/${processId}/comparacion/export`}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+        >
+          <Download className="h-4 w-4" /> Exportar Excel
+        </a>
+        <Link
+          href={`/procesos/${processId}/comparacion/reporte`}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+        >
+          <Printer className="h-4 w-4" /> Reporte / PDF
+        </Link>
+        <Link
+          href={`/procesos/${processId}?tab=comparacion${dedupe ? "" : "&dedupe=1"}`}
+          className={
+            dedupe
+              ? "inline-flex items-center rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-900"
+              : "inline-flex items-center rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          }
+        >
+          {dedupe ? "Mostrando 1 por proveedor" : "1 fila por proveedor"}
+        </Link>
+        {canManage && (
+          <form action={createComparison}>
+            <input type="hidden" name="processId" value={processId} />
+            <ActionButton variant="secondary">
+              <RefreshCw className="h-4 w-4" /> Regenerar
+            </ActionButton>
+          </form>
+        )}
+      </div>
+
+      {comparison.lines.length === 0 ? (
+        <Card className="bg-amber-50">
+          <p className="text-sm text-amber-900">
+            No hay ítems homologados y <strong>aprobados</strong>. Aprueba en
+            Revisión y regenera.
+          </p>
+        </Card>
+      ) : (
+        <ComparisonView lines={comparison.lines} dedupe={dedupe} />
       )}
     </div>
   );

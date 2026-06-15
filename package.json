@@ -11,6 +11,7 @@
     "test": "vitest run",
     "import:excel": "tsx scripts/import-excel.ts",
     "db:vector": "tsx scripts/setup-vector.ts",
+    "db:seed-admin": "tsx scripts/seed-admin.ts",
     "backfill:embeddings": "tsx scripts/backfill-embeddings.ts"
   },
   "dependencies": {
