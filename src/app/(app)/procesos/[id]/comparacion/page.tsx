@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, StatCard } from "@/components/ui";
+import { ActionButton } from "@/components/action-button";
 import { ComparisonView } from "@/components/comparison-view";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getLatestComparison } from "@/lib/comparison";
@@ -54,12 +55,7 @@ export default async function ComparacionPage({
           {canManage && (
             <form action={createComparison} className="mt-4">
               <input type="hidden" name="processId" value={id} />
-              <button
-                type="submit"
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-              >
-                Generar comparación
-              </button>
+              <ActionButton variant="primary">Generar comparación</ActionButton>
             </form>
           )}
         </Card>
@@ -97,12 +93,9 @@ export default async function ComparacionPage({
             {canManage && (
               <form action={createComparison}>
                 <input type="hidden" name="processId" value={id} />
-                <button
-                  type="submit"
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                >
+                <ActionButton variant="secondary">
                   <RefreshCw className="h-4 w-4" /> Regenerar
-                </button>
+                </ActionButton>
               </form>
             )}
           </div>

@@ -13,6 +13,7 @@ import {
 } from "@/lib/process-status";
 import type { ColumnMapping } from "@/lib/column-mapping";
 import { SubmitButton } from "@/components/form";
+import { ActionButton } from "@/components/action-button";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { Stepper, type Step } from "@/components/stepper";
 import { UploadForm } from "./upload-form";
@@ -346,14 +347,11 @@ export default async function ProcessDetailPage({
                                   className="ml-2 rounded-md border border-emerald-300 bg-white px-2 py-1 text-xs"
                                 />
                               </label>
-                              <button
-                                type="submit"
-                                className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800"
-                              >
+                              <ActionButton variant="success">
                                 {promotedCount > 0
                                   ? "Recargar al repositorio"
                                   : "Cargar tarifas al repositorio"}
-                              </button>
+                              </ActionButton>
                             </form>
                           </div>
                         );

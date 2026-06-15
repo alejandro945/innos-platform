@@ -1,7 +1,6 @@
 import {
   LayoutDashboard,
   FileStack,
-  ClipboardCheck,
   Table2,
   Building2,
   BookMarked,
@@ -31,12 +30,6 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/procesos",
     icon: FileStack,
     description: "Cargar archivos y comparar",
-  },
-  {
-    label: "Revisión de homologaciones",
-    href: "/revision",
-    icon: ClipboardCheck,
-    description: "Aprobar coincidencias sugeridas",
   },
   {
     label: "Repositorio de tarifas",

@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { Field, Input, Textarea, Select, SubmitButton } from "@/components/form";
+import { useModalClose } from "@/components/modal";
 import { createRate, type ActionState } from "./actions";
 
 const initialState: ActionState = {};
@@ -17,10 +18,14 @@ export function RateForm({
 }) {
   const [state, formAction] = useActionState(createRate, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const close = useModalClose();
 
   useEffect(() => {
-    if (state.ok) formRef.current?.reset();
-  }, [state.ok]);
+    if (state.ok) {
+      formRef.current?.reset();
+      close();
+    }
+  }, [state.ok, close]);
 
   if (items.length === 0 || providers.length === 0) {
     return (

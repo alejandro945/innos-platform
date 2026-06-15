@@ -308,6 +308,8 @@ export async function promoteUploadRates(formData: FormData) {
 
   revalidatePath(`/procesos/${upload.processId}`);
   revalidatePath("/tarifas");
+  // Take the user to the repository so they can see the created rates.
+  redirect("/tarifas");
 }
 
 /** Generate (or regenerate) the comparison for a process. */

@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { Field, Input, SubmitButton } from "@/components/form";
+import { useModalClose } from "@/components/modal";
 import { createProvider, type ActionState } from "./actions";
 
 const initialState: ActionState = {};
@@ -9,10 +10,14 @@ const initialState: ActionState = {};
 export function ProviderForm() {
   const [state, formAction] = useActionState(createProvider, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const close = useModalClose();
 
   useEffect(() => {
-    if (state.ok) formRef.current?.reset();
-  }, [state.ok]);
+    if (state.ok) {
+      formRef.current?.reset();
+      close();
+    }
+  }, [state.ok, close]);
 
   return (
     <form ref={formRef} action={formAction} className="space-y-4">

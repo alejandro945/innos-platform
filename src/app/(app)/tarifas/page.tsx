@@ -4,18 +4,23 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, EmptyState } from "@/components/ui";
+import { Modal } from "@/components/modal";
+import { Pagination } from "@/components/pagination";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { ITEM_KIND_LABELS } from "@/lib/constants";
 import { RateForm } from "./rate-form";
 
+const PAGE_SIZE = 25;
+
 export default async function TarifasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vigentes?: string }>;
+  searchParams: Promise<{ vigentes?: string; page?: string }>;
 }) {
   const session = await requireSession();
-  const { vigentes } = await searchParams;
-  const onlyCurrent = vigentes === "1";
+  const sp = await searchParams;
+  const onlyCurrent = sp.vigentes === "1";
+  const page = Math.max(1, Number(sp.page) || 1);
   const canManage = hasAnyRole(
     session.roles,
     "ADMIN",
@@ -34,12 +39,15 @@ export default async function TarifasPage({
       : {}),
   };
 
-  const [rates, items, providers] = await Promise.all([
+  const [rates, total, items, providers] = await Promise.all([
     prisma.rateCard.findMany({
       where,
       orderBy: [{ canonicalItem: { canonicalCode: "asc" } }, { value: "asc" }],
       include: { canonicalItem: true, provider: true },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
     }),
+    prisma.rateCard.count({ where }),
     prisma.canonicalItem.findMany({
       where: { organizationId: session.organizationId },
       orderBy: { canonicalCode: "asc" },
@@ -62,93 +70,100 @@ export default async function TarifasPage({
         title="Repositorio de tarifas"
         subtitle="Valores por ítem y proveedor, con exclusiones y vigencia."
         action={
-          <div className="flex gap-2 text-sm">
-            <Link
-              href="/tarifas"
-              className={
-                onlyCurrent
-                  ? "rounded-lg border border-slate-200 px-3 py-2 text-slate-600 hover:bg-slate-100"
-                  : "rounded-lg bg-slate-900 px-3 py-2 font-medium text-white"
-              }
-            >
-              Todas
-            </Link>
-            <Link
-              href="/tarifas?vigentes=1"
-              className={
-                onlyCurrent
-                  ? "rounded-lg bg-slate-900 px-3 py-2 font-medium text-white"
-                  : "rounded-lg border border-slate-200 px-3 py-2 text-slate-600 hover:bg-slate-100"
-              }
-            >
-              Vigentes hoy
-            </Link>
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1 text-sm">
+              <Link
+                href="/tarifas"
+                className={
+                  onlyCurrent
+                    ? "rounded-lg border border-slate-200 px-3 py-2 text-slate-600 hover:bg-slate-100"
+                    : "rounded-lg bg-slate-100 px-3 py-2 font-medium text-slate-900"
+                }
+              >
+                Todas
+              </Link>
+              <Link
+                href="/tarifas?vigentes=1"
+                className={
+                  onlyCurrent
+                    ? "rounded-lg bg-slate-100 px-3 py-2 font-medium text-slate-900"
+                    : "rounded-lg border border-slate-200 px-3 py-2 text-slate-600 hover:bg-slate-100"
+                }
+              >
+                Vigentes hoy
+              </Link>
+            </div>
+            {canManage && (
+              <Modal triggerLabel="Nueva tarifa" title="Nueva tarifa">
+                <RateForm items={itemOptions} providers={providerOptions} />
+              </Modal>
+            )}
           </div>
         }
       />
 
-      {canManage && (
-        <Card className="mb-6">
-          <h2 className="mb-4 text-base font-semibold text-slate-900">
-            Nueva tarifa
-          </h2>
-          <RateForm items={itemOptions} providers={providerOptions} />
-        </Card>
-      )}
-
-      {rates.length === 0 ? (
+      {total === 0 ? (
         <EmptyState
           title="Sin tarifas"
-          description="Registre tarifas o impórtelas desde el Excel existente con el script de importación."
+          description="Registre tarifas, impórtelas del Excel, o cárguelas desde un proceso de contratación."
         />
       ) : (
-        <Card className="overflow-hidden p-0">
-          <table className="w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-5 py-3 font-medium">Ítem</th>
-                <th className="px-5 py-3 font-medium">Proveedor</th>
-                <th className="px-5 py-3 font-medium">Valor</th>
-                <th className="px-5 py-3 font-medium">Exclusiones</th>
-                <th className="px-5 py-3 font-medium">Vigencia</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {rates.map((r) => (
-                <tr key={r.id} className="hover:bg-slate-50">
-                  <td className="px-5 py-3">
-                    <span className="font-mono text-xs text-slate-500">
-                      {r.canonicalItem.canonicalCode}
-                    </span>
-                    <span className="block text-slate-900">
-                      {r.canonicalItem.name}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      {ITEM_KIND_LABELS[r.canonicalItem.kind]}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-slate-600">
-                    {r.provider.name}
-                    {r.tariffSource && (
-                      <span className="block text-xs text-slate-400">
-                        {r.tariffSource}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3 font-medium text-slate-900">
-                    {formatCurrency(r.value.toString())}
-                  </td>
-                  <td className="px-5 py-3 text-xs text-slate-600">
-                    {r.exclusions ?? "—"}
-                  </td>
-                  <td className="px-5 py-3 text-xs text-slate-500">
-                    {formatDate(r.validFrom)} → {formatDate(r.validTo)}
-                  </td>
+        <>
+          <Card className="overflow-hidden p-0">
+            <table className="w-full text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-5 py-3 font-medium">Ítem</th>
+                  <th className="px-5 py-3 font-medium">Proveedor</th>
+                  <th className="px-5 py-3 font-medium">Valor</th>
+                  <th className="px-5 py-3 font-medium">Exclusiones</th>
+                  <th className="px-5 py-3 font-medium">Vigencia</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rates.map((r) => (
+                  <tr key={r.id} className="hover:bg-slate-50">
+                    <td className="px-5 py-3">
+                      <span className="font-mono text-xs text-slate-500">
+                        {r.canonicalItem.canonicalCode}
+                      </span>
+                      <span className="block text-slate-900">
+                        {r.canonicalItem.name}
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        {ITEM_KIND_LABELS[r.canonicalItem.kind]}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-slate-600">
+                      {r.provider.name}
+                      {r.tariffSource && (
+                        <span className="block text-xs text-slate-400">
+                          {r.tariffSource}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3 font-medium text-slate-900">
+                      {formatCurrency(r.value.toString())}
+                    </td>
+                    <td className="px-5 py-3 text-xs text-slate-600">
+                      {r.exclusions ?? "—"}
+                    </td>
+                    <td className="px-5 py-3 text-xs text-slate-500">
+                      {formatDate(r.validFrom)} → {formatDate(r.validTo)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+          <Pagination
+            basePath="/tarifas"
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={total}
+            params={onlyCurrent ? { vigentes: "1" } : undefined}
+          />
+        </>
       )}
     </div>
   );
