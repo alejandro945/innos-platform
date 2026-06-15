@@ -4,10 +4,11 @@ import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, EmptyState } from "@/components/ui";
 import { Modal } from "@/components/modal";
 import { ActionButton } from "@/components/action-button";
+import { DeleteButton } from "@/components/delete-button";
 import { Pagination } from "@/components/pagination";
 import { formatDate } from "@/lib/format";
 import { ProviderForm } from "./provider-form";
-import { toggleProviderStatus } from "./actions";
+import { toggleProviderStatus, deleteProvider } from "./actions";
 
 const PAGE_SIZE = 20;
 
@@ -25,7 +26,7 @@ export default async function ProveedoresPage({
     prisma.provider.findMany({
       where,
       orderBy: { name: "asc" },
-      include: { _count: { select: { rateCards: true } } },
+      include: { _count: { select: { rateCards: true, uploads: true } } },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
@@ -99,13 +100,45 @@ export default async function ProveedoresPage({
                       {formatDate(p.createdAt)}
                     </td>
                     {canManage && (
-                      <td className="px-5 py-3 text-right">
-                        <form action={toggleProviderStatus}>
-                          <input type="hidden" name="id" value={p.id} />
-                          <ActionButton variant="link">
-                            {p.status === "ACTIVE" ? "Desactivar" : "Activar"}
-                          </ActionButton>
-                        </form>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <form action={toggleProviderStatus}>
+                            <input type="hidden" name="id" value={p.id} />
+                            <ActionButton variant="link">
+                              {p.status === "ACTIVE" ? "Desactivar" : "Activar"}
+                            </ActionButton>
+                          </form>
+                          <Modal
+                            triggerLabel="Editar"
+                            title="Editar proveedor"
+                            triggerClassName="rounded-lg px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+                          >
+                            <ProviderForm
+                              initial={{
+                                id: p.id,
+                                name: p.name,
+                                nit: p.nit,
+                                contactName: p.contactName,
+                                contactEmail: p.contactEmail,
+                              }}
+                            />
+                          </Modal>
+                          {p._count.rateCards === 0 &&
+                          p._count.uploads === 0 ? (
+                            <DeleteButton
+                              action={deleteProvider}
+                              id={p.id}
+                              confirmText={`¿Borrar el proveedor "${p.name}"?`}
+                            />
+                          ) : (
+                            <span
+                              className="px-2 py-1.5 text-xs text-slate-300"
+                              title="No se puede borrar: tiene tarifas o cargas asociadas. Desactívelo."
+                            >
+                              —
+                            </span>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>

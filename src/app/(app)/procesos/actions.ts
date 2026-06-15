@@ -51,6 +51,50 @@ export async function createProcess(
   redirect(`/procesos/${created.id}`);
 }
 
+export async function updateProcess(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await requireRoles("ADMIN", "PROCUREMENT_ANALYST");
+  const id = String(formData.get("id"));
+  const parsed = processSchema.safeParse({
+    name: formData.get("name"),
+    description: formData.get("description"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+  const existing = await prisma.procurementProcess.findFirst({
+    where: { id, organizationId: session.organizationId },
+    select: { id: true },
+  });
+  if (!existing) return { error: "Proceso no encontrado." };
+
+  await prisma.procurementProcess.update({
+    where: { id },
+    data: {
+      name: parsed.data.name,
+      description: parsed.data.description || null,
+    },
+  });
+  revalidatePath("/procesos");
+  return { ok: true };
+}
+
+export async function deleteProcess(formData: FormData) {
+  const session = await requireRoles("ADMIN", "PROCUREMENT_ANALYST");
+  const id = String(formData.get("id"));
+  const existing = await prisma.procurementProcess.findFirst({
+    where: { id, organizationId: session.organizationId },
+    select: { id: true },
+  });
+  if (!existing) return;
+  // Uploads/items/mappings/comparisons cascade; promoted rates are kept
+  // (sourceUploadId is set null), so the repository is not affected.
+  await prisma.procurementProcess.delete({ where: { id } });
+  revalidatePath("/procesos");
+}
+
 /** Upload a provider file, store it, parse it and suggest a column mapping. */
 export async function uploadAndParse(
   _prev: ActionState,

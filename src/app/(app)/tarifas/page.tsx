@@ -5,10 +5,14 @@ import { requireSession } from "@/lib/session";
 import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, EmptyState } from "@/components/ui";
 import { Modal } from "@/components/modal";
+import { DeleteButton } from "@/components/delete-button";
 import { Pagination } from "@/components/pagination";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { ITEM_KIND_LABELS } from "@/lib/constants";
 import { RateForm } from "./rate-form";
+import { deleteRate } from "./actions";
+
+const toDateInput = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
 
 const PAGE_SIZE = 25;
 
@@ -118,6 +122,9 @@ export default async function TarifasPage({
                   <th className="px-5 py-3 font-medium">Valor</th>
                   <th className="px-5 py-3 font-medium">Exclusiones</th>
                   <th className="px-5 py-3 font-medium">Vigencia</th>
+                  {canManage && (
+                    <th className="px-5 py-3 text-right font-medium">Acciones</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -151,6 +158,31 @@ export default async function TarifasPage({
                     <td className="px-5 py-3 text-xs text-slate-500">
                       {formatDate(r.validFrom)} → {formatDate(r.validTo)}
                     </td>
+                    {canManage && (
+                      <td className="px-5 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <Modal
+                            triggerLabel="Editar"
+                            title="Editar tarifa"
+                            triggerClassName="rounded-lg px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+                          >
+                            <RateForm
+                              initial={{
+                                id: r.id,
+                                itemLabel: `${r.canonicalItem.canonicalCode} — ${r.canonicalItem.name}`,
+                                providerLabel: r.provider.name,
+                                tariffSource: r.tariffSource,
+                                value: r.value.toString(),
+                                exclusions: r.exclusions,
+                                validFrom: toDateInput(r.validFrom),
+                                validTo: toDateInput(r.validTo),
+                              }}
+                            />
+                          </Modal>
+                          <DeleteButton action={deleteRate} id={r.id} />
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

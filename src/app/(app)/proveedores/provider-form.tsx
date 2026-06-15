@@ -1,54 +1,81 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect } from "react";
 import { Field, Input, SubmitButton } from "@/components/form";
 import { useModalClose } from "@/components/modal";
-import { createProvider, type ActionState } from "./actions";
+import {
+  createProvider,
+  updateProvider,
+  type ActionState,
+} from "./actions";
 
 const initialState: ActionState = {};
 
-export function ProviderForm() {
-  const [state, formAction] = useActionState(createProvider, initialState);
-  const formRef = useRef<HTMLFormElement>(null);
+export type ProviderInitial = {
+  id: string;
+  name: string;
+  nit: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+};
+
+export function ProviderForm({ initial }: { initial?: ProviderInitial }) {
+  const isEdit = Boolean(initial);
+  const [state, formAction] = useActionState(
+    isEdit ? updateProvider : createProvider,
+    initialState,
+  );
   const close = useModalClose();
 
   useEffect(() => {
-    if (state.ok) {
-      formRef.current?.reset();
-      close();
-    }
+    if (state.ok) close();
   }, [state.ok, close]);
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-4">
+    <form action={formAction} className="space-y-4">
+      {initial && <input type="hidden" name="id" value={initial.id} />}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Nombre del proveedor" htmlFor="name">
-          <Input id="name" name="name" required placeholder="Aliado 1 S.A.S." />
+          <Input
+            id="name"
+            name="name"
+            required
+            defaultValue={initial?.name}
+            placeholder="Aliado 1 S.A.S."
+          />
         </Field>
         <Field label="NIT" htmlFor="nit">
-          <Input id="nit" name="nit" placeholder="900123456-7" />
+          <Input
+            id="nit"
+            name="nit"
+            defaultValue={initial?.nit ?? ""}
+            placeholder="900123456-7"
+          />
         </Field>
         <Field label="Contacto" htmlFor="contactName">
-          <Input id="contactName" name="contactName" placeholder="Nombre" />
+          <Input
+            id="contactName"
+            name="contactName"
+            defaultValue={initial?.contactName ?? ""}
+            placeholder="Nombre"
+          />
         </Field>
         <Field label="Correo de contacto" htmlFor="contactEmail">
           <Input
             id="contactEmail"
             name="contactEmail"
             type="email"
+            defaultValue={initial?.contactEmail ?? ""}
             placeholder="contacto@aliado.com"
           />
         </Field>
       </div>
 
-      {state.error && (
-        <p className="text-sm text-rose-600">{state.error}</p>
-      )}
-      {state.ok && (
-        <p className="text-sm text-emerald-600">Proveedor creado.</p>
-      )}
+      {state.error && <p className="text-sm text-rose-600">{state.error}</p>}
 
-      <SubmitButton>Agregar proveedor</SubmitButton>
+      <SubmitButton pendingLabel="Guardando…">
+        {isEdit ? "Guardar cambios" : "Agregar proveedor"}
+      </SubmitButton>
     </form>
   );
 }

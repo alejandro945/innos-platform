@@ -70,3 +70,74 @@ export async function createRate(
   revalidatePath("/tarifas");
   return { ok: true };
 }
+
+const rateUpdateSchema = z.object({
+  tariffSource: z.string().trim().optional(),
+  value: z.coerce
+    .number()
+    .positive("El valor debe ser mayor a cero.")
+    .lt(1e12, "El valor es demasiado grande."),
+  unit: z.string().trim().optional(),
+  exclusions: z.string().trim().optional(),
+  validFrom: z.string().trim().min(1, "Indique la vigencia desde."),
+  validTo: z.string().trim().optional(),
+});
+
+export async function updateRate(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await requireRoles(
+    "ADMIN",
+    "PROCUREMENT_ANALYST",
+    "PROVIDER_MANAGER",
+  );
+  const id = String(formData.get("id"));
+  const parsed = rateUpdateSchema.safeParse({
+    tariffSource: formData.get("tariffSource"),
+    value: formData.get("value"),
+    unit: formData.get("unit"),
+    exclusions: formData.get("exclusions"),
+    validFrom: formData.get("validFrom"),
+    validTo: formData.get("validTo"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+  const existing = await prisma.rateCard.findFirst({
+    where: { id, organizationId: session.organizationId },
+    select: { id: true },
+  });
+  if (!existing) return { error: "Tarifa no encontrada." };
+
+  const data = parsed.data;
+  await prisma.rateCard.update({
+    where: { id },
+    data: {
+      tariffSource: data.tariffSource || null,
+      value: data.value,
+      unit: data.unit || null,
+      exclusions: data.exclusions || null,
+      validFrom: new Date(data.validFrom),
+      validTo: data.validTo ? new Date(data.validTo) : null,
+    },
+  });
+  revalidatePath("/tarifas");
+  return { ok: true };
+}
+
+export async function deleteRate(formData: FormData) {
+  const session = await requireRoles(
+    "ADMIN",
+    "PROCUREMENT_ANALYST",
+    "PROVIDER_MANAGER",
+  );
+  const id = String(formData.get("id"));
+  const existing = await prisma.rateCard.findFirst({
+    where: { id, organizationId: session.organizationId },
+    select: { id: true },
+  });
+  if (!existing) return;
+  await prisma.rateCard.delete({ where: { id } });
+  revalidatePath("/tarifas");
+}

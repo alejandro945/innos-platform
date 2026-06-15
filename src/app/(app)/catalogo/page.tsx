@@ -3,9 +3,11 @@ import { requireSession } from "@/lib/session";
 import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, EmptyState } from "@/components/ui";
 import { Modal } from "@/components/modal";
+import { DeleteButton } from "@/components/delete-button";
 import { Pagination } from "@/components/pagination";
 import { ITEM_KIND_LABELS } from "@/lib/constants";
 import { ItemForm } from "./item-form";
+import { deleteCanonicalItem } from "./actions";
 
 const PAGE_SIZE = 20;
 
@@ -61,6 +63,9 @@ export default async function CatalogoPage({
                   <th className="px-5 py-3 font-medium">Códigos</th>
                   <th className="px-5 py-3 font-medium">Incluye</th>
                   <th className="px-5 py-3 font-medium">Tarifas</th>
+                  {canManage && (
+                    <th className="px-5 py-3 text-right font-medium">Acciones</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -96,6 +101,44 @@ export default async function CatalogoPage({
                     <td className="px-5 py-3 text-slate-600">
                       {it._count.rateCards}
                     </td>
+                    {canManage && (
+                      <td className="px-5 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <Modal
+                            triggerLabel="Editar"
+                            title="Editar ítem canónico"
+                            triggerClassName="rounded-lg px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+                          >
+                            <ItemForm
+                              initial={{
+                                id: it.id,
+                                kind: it.kind,
+                                canonicalCode: it.canonicalCode,
+                                normativeCode: it.normativeCode,
+                                name: it.name,
+                                description: it.description,
+                                includesFees: it.includesFees,
+                                includesSupplies: it.includesSupplies,
+                              }}
+                            />
+                          </Modal>
+                          {it._count.rateCards === 0 ? (
+                            <DeleteButton
+                              action={deleteCanonicalItem}
+                              id={it.id}
+                              confirmText={`¿Borrar el ítem "${it.name}"?`}
+                            />
+                          ) : (
+                            <span
+                              className="px-2 py-1.5 text-xs text-slate-300"
+                              title="No se puede borrar: tiene tarifas asociadas."
+                            >
+                              —
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

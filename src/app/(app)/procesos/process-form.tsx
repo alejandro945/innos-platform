@@ -1,29 +1,50 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { Field, Input, Textarea, SubmitButton } from "@/components/form";
-import { createProcess, type ActionState } from "./actions";
+import { useModalClose } from "@/components/modal";
+import { createProcess, updateProcess, type ActionState } from "./actions";
 
 const initialState: ActionState = {};
 
-export function ProcessForm() {
-  const [state, formAction] = useActionState(createProcess, initialState);
+export function ProcessForm({
+  initial,
+}: {
+  initial?: { id: string; name: string; description: string | null };
+}) {
+  const isEdit = Boolean(initial);
+  const action = isEdit ? updateProcess : createProcess;
+  const [state, formAction] = useActionState(action, initialState);
+  const close = useModalClose();
+
+  useEffect(() => {
+    if (state.ok) close();
+  }, [state.ok, close]);
 
   return (
     <form action={formAction} className="space-y-4">
+      {initial && <input type="hidden" name="id" value={initial.id} />}
       <Field label="Nombre del proceso" htmlFor="name">
         <Input
           id="name"
           name="name"
           required
+          defaultValue={initial?.name}
           placeholder="Contratación oncología 2026"
         />
       </Field>
       <Field label="Descripción" htmlFor="description" hint="Opcional">
-        <Textarea id="description" name="description" rows={2} />
+        <Textarea
+          id="description"
+          name="description"
+          rows={2}
+          defaultValue={initial?.description ?? ""}
+        />
       </Field>
       {state.error && <p className="text-sm text-rose-600">{state.error}</p>}
-      <SubmitButton pendingLabel="Creando…">Crear proceso</SubmitButton>
+      <SubmitButton pendingLabel={isEdit ? "Guardando…" : "Creando…"}>
+        {isEdit ? "Guardar cambios" : "Crear proceso"}
+      </SubmitButton>
     </form>
   );
 }
