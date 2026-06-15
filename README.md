@@ -18,16 +18,19 @@ Plataforma web para centralizar las tarifas de proveedores, estandarizar
 
 ## Estado del proyecto
 
-**Fase 0 — Fundaciones (completada)**
+- [x] **Fase 0 — Fundaciones:** Next.js + Prisma + SSO Entra ID + RBAC + app shell.
+- [x] **Fase 1 — Data store:** CRUD proveedores/catálogo/tarifas + importador Excel.
+- [x] **Fase 2 — Carga y parseo:** procesos, subida de archivo, parseo, mapeo de columnas con IA.
+- [x] **Fase 3 — Normalización con IA:** embeddings + pgvector, recuperación de candidatos, agente Claude, pipeline (Inngest + fallback inline), bandeja de revisión que aprende.
+- [ ] **Fase 4 — Comparación y reportes**
+- [ ] **Fase 5 — Avanzadas** · [ ] **Fase 6 — Hardening**
 
-- [x] Proyecto Next.js + TypeScript + Tailwind
-- [x] Modelo de datos completo (Prisma) — ver `prisma/schema.prisma`
-- [x] SSO con Microsoft Entra ID + RBAC (5 roles)
-- [x] App shell en español: sidebar, topbar, dashboard, navegación
-- [x] Protección de rutas (proxy/middleware) + login
+### Activar la IA (Fase 3)
 
-Siguientes fases: 1) Data store + importación del Excel · 2) Carga y parseo ·
-3) Normalización con IA · 4) Comparación y reportes · 5) Avanzadas · 6) Hardening.
+- `ANTHROPIC_API_KEY` — agente de homologación (sin esto usa heurística/léxico).
+- `OPENAI_API_KEY` — embeddings para recuperación vectorial (sin esto usa léxico).
+- pgvector: `psql "$DIRECT_URL" -f prisma/sql/001_pgvector.sql`, luego `pnpm backfill:embeddings`.
+- `INNGEST_EVENT_KEY` — orquestación durable (sin esto la homologación corre inline).
 
 ## Puesta en marcha
 

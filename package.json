@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "import:excel": "tsx scripts/import-excel.ts"
+    "import:excel": "tsx scripts/import-excel.ts",
+    "backfill:embeddings": "tsx scripts/backfill-embeddings.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",

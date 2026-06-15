@@ -1,0 +1,82 @@
+"use client";
+
+import { Select } from "@/components/form";
+import { ConfidenceBadge } from "@/components/ui";
+import { formatCurrency } from "@/lib/format";
+import { approveMapping, rejectMapping } from "./actions";
+
+export type ReviewItem = {
+  mappingId: string;
+  rawName: string;
+  rawCode: string | null;
+  rawPrice: string | null;
+  providerName: string;
+  confidence: number;
+  rationale: string | null;
+  suggestedId: string | null;
+};
+
+export function ReviewRow({
+  item,
+  options,
+}: {
+  item: ReviewItem;
+  options: { id: string; label: string }[];
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        {/* Provider item (left) */}
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-slate-900">{item.rawName}</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {item.providerName}
+            {item.rawCode ? ` · cód. ${item.rawCode}` : ""}
+            {item.rawPrice ? ` · ${formatCurrency(item.rawPrice)}` : ""}
+          </p>
+          <div className="mt-2">
+            <ConfidenceBadge value={item.confidence} />
+          </div>
+          {item.rationale && (
+            <p className="mt-2 text-xs text-slate-500">{item.rationale}</p>
+          )}
+        </div>
+
+        {/* Decision (right) */}
+        <div className="flex w-full flex-col gap-2 md:w-96">
+          <form action={approveMapping} className="flex flex-col gap-2">
+            <input type="hidden" name="mappingId" value={item.mappingId} />
+            <Select
+              name="canonicalItemId"
+              defaultValue={item.suggestedId ?? ""}
+            >
+              <option value="" disabled>
+                Seleccione ítem canónico…
+              </option>
+              {options.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+            <button
+              type="submit"
+              className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              Aprobar homologación
+            </button>
+          </form>
+          <form action={rejectMapping}>
+            <input type="hidden" name="mappingId" value={item.mappingId} />
+            <button
+              type="submit"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              Sin coincidencia
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}

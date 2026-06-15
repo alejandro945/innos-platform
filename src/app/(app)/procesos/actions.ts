@@ -8,6 +8,8 @@ import { prisma } from "@/lib/prisma";
 import { requireRoles } from "@/lib/session";
 import { storeProviderFile } from "@/lib/blob";
 import { parseSpreadsheet } from "@/lib/parse";
+import { normalizeUpload } from "@/lib/normalize";
+import { inngest, EVENTS } from "@/inngest/client";
 import {
   suggestColumnMapping,
   MAPPING_FIELDS,
@@ -195,6 +197,35 @@ export async function confirmMapping(formData: FormData) {
       },
     });
   });
+
+  revalidatePath(`/procesos/${upload.processId}`);
+}
+
+/**
+ * Start homologation for an upload. Uses Inngest (durable) when configured,
+ * otherwise runs the pipeline inline (suitable for dev / small files).
+ */
+export async function requestNormalization(formData: FormData) {
+  const session = await requireRoles("ADMIN", "PROCUREMENT_ANALYST");
+  const uploadId = String(formData.get("uploadId"));
+
+  const upload = await prisma.processUpload.findFirst({
+    where: { id: uploadId, process: { organizationId: session.organizationId } },
+    select: { id: true, processId: true },
+  });
+  if (!upload) return;
+
+  await prisma.processUpload.update({
+    where: { id: uploadId },
+    data: { status: "NORMALIZING" },
+  });
+
+  if (process.env.INNGEST_EVENT_KEY) {
+    await inngest.send({ name: EVENTS.normalizeUpload, data: { uploadId } });
+  } else {
+    // Inline fallback (no queue configured).
+    await normalizeUpload(uploadId);
+  }
 
   revalidatePath(`/procesos/${upload.processId}`);
 }

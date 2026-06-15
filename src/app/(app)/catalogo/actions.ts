@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRoles } from "@/lib/session";
+import { embedCanonicalItem } from "@/lib/embed-items";
 
 const itemSchema = z.object({
   kind: z.enum(["SERVICE", "MEDICATION", "DEVICE", "SUPPLY"]),
@@ -37,8 +38,9 @@ export async function createCanonicalItem(
   }
   const data = parsed.data;
 
+  let createdId: string;
   try {
-    await prisma.canonicalItem.create({
+    const created = await prisma.canonicalItem.create({
       data: {
         organizationId: session.organizationId,
         kind: data.kind,
@@ -53,8 +55,16 @@ export async function createCanonicalItem(
           : undefined,
       },
     });
+    createdId = created.id;
   } catch {
     return { error: "Ya existe un ítem con ese CUPS propio." };
+  }
+
+  // Generate the search embedding (no-op when embeddings are not configured).
+  try {
+    await embedCanonicalItem(createdId);
+  } catch (e) {
+    console.warn("Embedding generation skipped:", (e as Error).message);
   }
 
   revalidatePath("/catalogo");

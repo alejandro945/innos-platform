@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FileText } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -13,6 +14,7 @@ import {
 import type { ColumnMapping } from "@/lib/column-mapping";
 import { UploadForm } from "./upload-form";
 import { MappingForm } from "./mapping-form";
+import { requestNormalization } from "../actions";
 
 export default async function ProcessDetailPage({
   params,
@@ -43,6 +45,25 @@ export default async function ProcessDetailPage({
     orderBy: { name: "asc" },
   });
   const providerOptions = providers.map((p) => ({ id: p.id, label: p.name }));
+
+  // Mapping status counts per upload (ItemMapping has no uploadId, so reduce in JS).
+  const mappings = await prisma.itemMapping.findMany({
+    where: { providerItem: { upload: { processId: id } } },
+    select: { status: true, providerItem: { select: { uploadId: true } } },
+  });
+  const counts = new Map<
+    string,
+    { mapped: number; auto: number; pending: number; noMatch: number }
+  >();
+  for (const m of mappings) {
+    const key = m.providerItem.uploadId;
+    const c = counts.get(key) ?? { mapped: 0, auto: 0, pending: 0, noMatch: 0 };
+    c.mapped++;
+    if (m.status === "AUTO_APPROVED" || m.status === "APPROVED") c.auto++;
+    else if (m.status === "PENDING_REVIEW") c.pending++;
+    else if (m.status === "NO_MATCH" || m.status === "REJECTED") c.noMatch++;
+    counts.set(key, c);
+  }
 
   return (
     <div>
@@ -107,12 +128,63 @@ export default async function ProcessDetailPage({
                   />
                 )}
 
+                {upload.status === "NORMALIZING" && (
+                  <p className="text-sm text-blue-600">
+                    Homologando ítems con IA… recargue en unos momentos.
+                  </p>
+                )}
+
                 {upload.status === "READY" && (
                   <div>
-                    <p className="mb-2 text-sm text-slate-500">
-                      {upload._count.providerItems} ítems listos. Vista previa
-                      (la homologación con IA es la siguiente fase).
-                    </p>
+                    {(() => {
+                      const c = counts.get(upload.id);
+                      if (!c || c.mapped === 0) {
+                        return (
+                          <div className="mb-3 flex items-center justify-between rounded-lg bg-slate-50 p-3">
+                            <p className="text-sm text-slate-600">
+                              {upload._count.providerItems} ítems listos para
+                              homologar.
+                            </p>
+                            {canManage && (
+                              <form action={requestNormalization}>
+                                <input
+                                  type="hidden"
+                                  name="uploadId"
+                                  value={upload.id}
+                                />
+                                <button
+                                  type="submit"
+                                  className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                                >
+                                  Iniciar homologación
+                                </button>
+                              </form>
+                            )}
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                            {c.auto} auto-aprobadas
+                          </span>
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                            {c.pending} por revisar
+                          </span>
+                          <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
+                            {c.noMatch} sin match
+                          </span>
+                          {c.pending + c.noMatch > 0 && (
+                            <Link
+                              href="/revision"
+                              className="ml-auto text-sm font-medium text-slate-700 hover:text-slate-900"
+                            >
+                              Ir a revisión →
+                            </Link>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
