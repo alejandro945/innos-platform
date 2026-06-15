@@ -1,0 +1,375 @@
+// INOOS Platform — data model
+// Identifiers in English (per project convention). UI copy is Spanish.
+// Postgres + pgvector. Embeddings stored via the `vector` extension.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy & identity
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  nit       String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users                User[]
+  providers            Provider[]
+  canonicalItems       CanonicalItem[]
+  rateCards            RateCard[]
+  procurementProcesses ProcurementProcess[]
+  auditLogs            AuditLog[]
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum Role {
+  ADMIN
+  PROCUREMENT_ANALYST
+  REVIEWER
+  PROVIDER_MANAGER
+  VIEWER
+}
+
+model User {
+  id             String       @id @default(cuid())
+  organizationId String
+  entraOid       String?      @unique // Microsoft Entra ID object id
+  email          String       @unique
+  name           String?
+  image          String?
+  status         UserStatus   @default(ACTIVE)
+  roles          UserRole[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  reviews      ItemMapping[] @relation("MappingReviewer")
+  uploads      ProcessUpload[]
+  processes    ProcurementProcess[]
+
+  @@index([organizationId])
+}
+
+model UserRole {
+  id     String @id @default(cuid())
+  userId String
+  role   Role
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+}
+
+// ---------------------------------------------------------------------------
+// Providers
+// ---------------------------------------------------------------------------
+
+enum ProviderStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Provider {
+  id             String         @id @default(cuid())
+  organizationId String
+  name           String
+  nit            String?
+  contactName    String?
+  contactEmail   String?
+  status         ProviderStatus @default(ACTIVE)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization  Organization    @relation(fields: [organizationId], references: [id])
+  providerItems ProviderItem[]
+  rateCards     RateCard[]
+  uploads       ProcessUpload[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+// ---------------------------------------------------------------------------
+// Canonical catalog (the source of truth)
+// ---------------------------------------------------------------------------
+
+enum ItemKind {
+  SERVICE
+  MEDICATION
+  DEVICE
+  SUPPLY
+}
+
+model CanonicalItem {
+  id              String   @id @default(cuid())
+  organizationId  String
+  kind            ItemKind @default(SERVICE)
+  canonicalCode   String // e.g. INO-QT-01 (CUPS propio)
+  normativeCode   String? // CUPS SISPRO
+  name            String
+  description     String?
+  includesFees    Boolean  @default(false)
+  includesSupplies Boolean @default(false)
+  isApproved      Boolean  @default(true) // false = AI-proposed, pending admin approval
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  codes        CanonicalCode[]
+  rateCards    RateCard[]
+  mappings     ItemMapping[]
+  embedding    ItemEmbedding?
+
+  @@unique([organizationId, canonicalCode])
+  @@index([organizationId, kind])
+}
+
+enum CodeSystem {
+  CUPS
+  CUM
+  ATC
+  IUM
+  OTHER
+}
+
+model CanonicalCode {
+  id              String     @id @default(cuid())
+  canonicalItemId String
+  system          CodeSystem
+  code            String
+
+  canonicalItem CanonicalItem @relation(fields: [canonicalItemId], references: [id], onDelete: Cascade)
+
+  @@unique([canonicalItemId, system, code])
+  @@index([system, code])
+}
+
+/// Vector embedding for candidate retrieval (pgvector).
+/// The `vector` column is added via raw migration (Prisma lacks a native type).
+model ItemEmbedding {
+  canonicalItemId String        @id
+  canonicalItem   CanonicalItem @relation(fields: [canonicalItemId], references: [id], onDelete: Cascade)
+  // embedding   vector(1536)  -- defined in SQL migration
+  updatedAt       DateTime      @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Rates (tarifas)
+// ---------------------------------------------------------------------------
+
+model RateCard {
+  id              String    @id @default(cuid())
+  organizationId  String
+  canonicalItemId String
+  providerId      String
+  tariffSource    String? // e.g. "Tarifario A — Aliado 1"
+  value           Decimal   @db.Decimal(14, 2)
+  currency        String    @default("COP")
+  unit            String?
+  exclusions      String?
+  validFrom       DateTime
+  validTo         DateTime?
+  sourceUploadId  String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  canonicalItem CanonicalItem  @relation(fields: [canonicalItemId], references: [id])
+  provider      Provider       @relation(fields: [providerId], references: [id])
+  sourceUpload  ProcessUpload? @relation(fields: [sourceUploadId], references: [id])
+
+  @@index([organizationId, canonicalItemId])
+  @@index([providerId])
+  @@index([validFrom, validTo])
+}
+
+// ---------------------------------------------------------------------------
+// Procurement processes, uploads & raw provider items
+// ---------------------------------------------------------------------------
+
+enum ProcessStatus {
+  DRAFT
+  PROCESSING
+  IN_REVIEW
+  COMPLETED
+  ARCHIVED
+}
+
+model ProcurementProcess {
+  id             String        @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  status         ProcessStatus @default(DRAFT)
+  createdById    String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id])
+  createdBy    User            @relation(fields: [createdById], references: [id])
+  uploads      ProcessUpload[]
+  comparisons  Comparison[]
+
+  @@index([organizationId, status])
+}
+
+enum UploadStatus {
+  UPLOADED
+  PARSING
+  MAPPING
+  NORMALIZING
+  READY
+  FAILED
+}
+
+model ProcessUpload {
+  id            String       @id @default(cuid())
+  processId     String
+  providerId    String
+  uploadedById  String
+  fileName      String
+  blobUrl       String
+  status        UploadStatus @default(UPLOADED)
+  columnMapping Json? // confirmed mapping: {name, code, price, unit, exclusions}
+  rowCount      Int          @default(0)
+  parsedAt      DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  process       ProcurementProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
+  provider      Provider           @relation(fields: [providerId], references: [id])
+  uploadedBy    User               @relation(fields: [uploadedById], references: [id])
+  providerItems ProviderItem[]
+  rateCards     RateCard[]
+
+  @@index([processId])
+}
+
+model ProviderItem {
+  id         String  @id @default(cuid())
+  uploadId   String
+  providerId String
+  rowNumber  Int
+  rawName    String
+  rawCode    String?
+  rawUnit    String?
+  rawPrice   Decimal? @db.Decimal(14, 2)
+  currency   String   @default("COP")
+  exclusions String?
+
+  upload   ProcessUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  provider Provider      @relation(fields: [providerId], references: [id])
+  mapping  ItemMapping?
+
+  @@index([uploadId])
+  @@index([providerId, rawName])
+}
+
+// ---------------------------------------------------------------------------
+// Homologation (the learning asset)
+// ---------------------------------------------------------------------------
+
+enum MappingMethod {
+  RULE
+  VECTOR
+  AI
+  HUMAN
+}
+
+enum MappingStatus {
+  AUTO_APPROVED
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  NO_MATCH
+}
+
+model ItemMapping {
+  id              String        @id @default(cuid())
+  providerItemId  String        @unique
+  canonicalItemId String?
+  confidence      Float         @default(0)
+  method          MappingMethod
+  status          MappingStatus @default(PENDING_REVIEW)
+  rationale       String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  providerItem  ProviderItem   @relation(fields: [providerItemId], references: [id], onDelete: Cascade)
+  canonicalItem CanonicalItem? @relation(fields: [canonicalItemId], references: [id])
+  reviewedBy    User?          @relation("MappingReviewer", fields: [reviewedById], references: [id])
+
+  @@index([status])
+  @@index([canonicalItemId])
+}
+
+// ---------------------------------------------------------------------------
+// Comparison results
+// ---------------------------------------------------------------------------
+
+model Comparison {
+  id          String   @id @default(cuid())
+  processId   String
+  generatedAt DateTime @default(now())
+  summary     Json? // aggregate stats snapshot
+
+  process ProcurementProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
+  lines   ComparisonLine[]
+
+  @@index([processId])
+}
+
+model ComparisonLine {
+  id              String   @id @default(cuid())
+  comparisonId    String
+  canonicalItemId String
+  minValue        Decimal? @db.Decimal(14, 2)
+  maxValue        Decimal? @db.Decimal(14, 2)
+  avgValue        Decimal? @db.Decimal(14, 2)
+  optionCount     Int      @default(0)
+  bestProviderId  String?
+  options         Json // [{providerId, value, exclusions, validFrom, validTo}]
+
+  comparison Comparison @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
+
+  @@index([comparisonId])
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  actorId        String?
+  action         String // e.g. "mapping.approved", "rate.created"
+  entityType     String
+  entityId       String
+  before         Json?
+  after          Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, entityType, entityId])
+  @@index([createdAt])
+}
