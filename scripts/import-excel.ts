@@ -7,6 +7,7 @@
 import path from "node:path";
 import * as XLSX from "xlsx";
 import { PrismaClient, type ItemKind } from "@prisma/client";
+import { parsePrice } from "../src/lib/number";
 
 const prisma = new PrismaClient();
 
@@ -109,8 +110,8 @@ async function main() {
   for (const row of tarifas) {
     const canonicalCode = String(row[0] ?? "").trim();
     const tariffSource = String(row[2] ?? "").trim();
-    const value = Number(row[3]);
-    if (!canonicalCode || !tariffSource || Number.isNaN(value)) continue;
+    const value = parsePrice(row[3]);
+    if (!canonicalCode || !tariffSource || value === null) continue;
 
     // Provider name = text after an em/hyphen dash, else the whole source.
     const providerName =

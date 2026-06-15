@@ -30,14 +30,24 @@ const mappingSchema = z.object({
   exclusions: z.string().nullable(),
 });
 
+// Order matters: more specific fields are matched first so a header isn't
+// claimed by a looser pattern. Each header maps to at most one field.
 const KEYWORDS: Record<MappingField, RegExp> = {
-  name: /(nombre|descrip|servicio|producto|concepto|item|ítem|detalle)/i,
   code: /(cups|cum|c[oó]digo|code|atc)/i,
-  // \btarifa\b avoids matching "tarifario" (the contractor column).
-  price: /(valor|precio|\btarifa\b|costo|vr\.?|importe|total)/i,
-  unit: /(unidad|medida|presenta|um\b)/i,
+  price: /(valor|precio|\btarifa\b|costo|\bvr\.?\b|importe|total)/i,
+  // \bum\b avoids matching "CUM"/"CUPS"; \bund?\b catches "und"/"un".
+  unit: /(unidad|\bund?\b|medida|presentaci|\bum\b)/i,
   exclusions: /(exclus|no incluye|observa|nota)/i,
+  name: /(nombre|descrip|servicio|producto|concepto|item|ítem|detalle)/i,
 };
+
+const FIELD_PRIORITY: MappingField[] = [
+  "code",
+  "price",
+  "unit",
+  "exclusions",
+  "name",
+];
 
 /** Keyword-based mapping used as fallback (and when AI is disabled). */
 export function heuristicMapping(headers: string[]): ColumnMapping {
@@ -48,9 +58,15 @@ export function heuristicMapping(headers: string[]): ColumnMapping {
     unit: null,
     exclusions: null,
   };
-  for (const field of MAPPING_FIELDS) {
-    const match = headers.find((h) => KEYWORDS[field].test(h));
-    if (match) result[field] = match;
+  const used = new Set<string>();
+  for (const field of FIELD_PRIORITY) {
+    const match = headers.find(
+      (h) => !used.has(h) && KEYWORDS[field].test(h),
+    );
+    if (match) {
+      result[field] = match;
+      used.add(match);
+    }
   }
   return result;
 }

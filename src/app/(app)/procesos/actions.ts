@@ -10,6 +10,7 @@ import { storeProviderFile } from "@/lib/blob";
 import { parseSpreadsheet } from "@/lib/parse";
 import { normalizeUpload } from "@/lib/normalize";
 import { generateComparison } from "@/lib/comparison";
+import { parsePrice } from "@/lib/number";
 import { inngest, EVENTS } from "@/inngest/client";
 import {
   suggestColumnMapping,
@@ -154,12 +155,6 @@ export async function confirmMapping(formData: FormData) {
   }
   if (!mapping.name) return; // name is required to identify items
 
-  const toNumber = (v: unknown): number | null => {
-    if (v === null || v === undefined || v === "") return null;
-    const n = Number(String(v).replace(/[^0-9.,-]/g, "").replace(/\.(?=\d{3})/g, "").replace(",", "."));
-    return Number.isNaN(n) ? null : n;
-  };
-
   await prisma.$transaction(async (tx) => {
     // Reset any previously materialized items for this upload.
     await tx.providerItem.deleteMany({ where: { uploadId } });
@@ -177,7 +172,7 @@ export async function confirmMapping(formData: FormData) {
           rawName,
           rawCode: mapping.code ? String(row[mapping.code] ?? "").trim() || null : null,
           rawUnit: mapping.unit ? String(row[mapping.unit] ?? "").trim() || null : null,
-          rawPrice: mapping.price ? toNumber(row[mapping.price]) : null,
+          rawPrice: mapping.price ? parsePrice(row[mapping.price]) : null,
           exclusions: mapping.exclusions
             ? String(row[mapping.exclusions] ?? "").trim() || null
             : null,

@@ -9,7 +9,10 @@ const rateSchema = z.object({
   canonicalItemId: z.string().trim().min(1, "Seleccione un ítem canónico."),
   providerId: z.string().trim().min(1, "Seleccione un proveedor."),
   tariffSource: z.string().trim().optional(),
-  value: z.coerce.number().positive("El valor debe ser mayor a cero."),
+  value: z.coerce
+    .number()
+    .positive("El valor debe ser mayor a cero.")
+    .lt(1e12, "El valor es demasiado grande."),
   unit: z.string().trim().optional(),
   exclusions: z.string().trim().optional(),
   validFrom: z.string().trim().min(1, "Indique la vigencia desde."),
