@@ -1,4 +1,4 @@
-import type { MappingMethod, MappingStatus } from "@prisma/client";
+import type { MappingMethod, MappingStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isLlmEnabled } from "@/lib/llm";
 import {
@@ -37,6 +37,7 @@ async function persistMapping(
     method: MappingMethod;
     status: MappingStatus;
     rationale: string;
+    candidates?: Prisma.InputJsonValue;
   },
 ) {
   await prisma.itemMapping.upsert({
@@ -47,6 +48,7 @@ async function persistMapping(
       method: data.method,
       status: data.status,
       rationale: data.rationale,
+      candidates: data.candidates,
       reviewedById: null,
       reviewedAt: null,
     },
@@ -103,6 +105,12 @@ export async function normalizeProviderItem(providerItemId: string) {
     method: isLlmEnabled() ? "AI" : "VECTOR",
     status: statusForConfidence(decision.canonicalItemId, decision.confidence),
     rationale: decision.rationale,
+    candidates: candidates.slice(0, 5).map((c) => ({
+      id: c.id,
+      code: c.canonicalCode,
+      name: c.name,
+      score: Math.round(c.score * 100) / 100,
+    })),
   });
 }
 

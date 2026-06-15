@@ -308,6 +308,7 @@ model ItemMapping {
   method          MappingMethod
   status          MappingStatus @default(PENDING_REVIEW)
   rationale       String?
+  candidates      Json? // top retrieval candidates [{id,code,name,score}]
   reviewedById    String?
   reviewedAt      DateTime?
   createdAt       DateTime      @default(now())

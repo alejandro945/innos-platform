@@ -2,7 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { PageHeader, EmptyState } from "@/components/ui";
-import { ReviewRow, type ReviewItem } from "./review-row";
+import { type ReviewItem, type Candidate } from "./review-row";
+import { ReviewList } from "./review-list";
 
 export default async function RevisionPage({
   searchParams,
@@ -43,7 +44,16 @@ export default async function RevisionPage({
     confidence: m.confidence,
     rationale: m.rationale,
     suggestedId: m.canonicalItemId,
+    candidates: (Array.isArray(m.candidates)
+      ? (m.candidates as unknown as Candidate[])
+      : []
+    ).slice(0, 5),
   }));
+
+  const highConfidenceCount = items.filter(
+    (i) => i.suggestedId && i.confidence >= 0.9,
+  ).length;
+  const noMatchCount = items.filter((i) => !i.suggestedId).length;
 
   const catalog = await prisma.canonicalItem.findMany({
     where: { organizationId: session.organizationId },
@@ -82,16 +92,13 @@ export default async function RevisionPage({
           description="No hay homologaciones pendientes. Las de confianza media o baja aparecerán aquí tras procesar un archivo."
         />
       ) : (
-        <div className="space-y-3">
-          <p className="text-sm text-slate-500">
-            {items.length} ítem(s) por revisar. Si el servicio del proveedor no
-            existe en el catálogo, use{" "}
-            <strong>“Crear ítem canónico y aprobar”</strong>.
-          </p>
-          {items.map((item) => (
-            <ReviewRow key={item.mappingId} item={item} options={options} />
-          ))}
-        </div>
+        <ReviewList
+          items={items}
+          options={options}
+          proceso={proceso}
+          highConfidenceCount={highConfidenceCount}
+          noMatchCount={noMatchCount}
+        />
       )}
     </div>
   );
