@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect } from "react";
+import { toast } from "sonner";
 import { Field, Input, SubmitButton } from "@/components/form";
 import { useModalClose } from "@/components/modal";
 import {
@@ -28,8 +29,14 @@ export function ProviderForm({ initial }: { initial?: ProviderInitial }) {
   const close = useModalClose();
 
   useEffect(() => {
-    if (state.ok) close();
-  }, [state.ok, close]);
+    if (state.ok) {
+      toast.success(isEdit ? "Proveedor actualizado." : "Proveedor creado.");
+      close();
+    }
+  }, [state.ok, close, isEdit]);
+  useEffect(() => {
+    if (state.error) toast.error(state.error);
+  }, [state.error]);
 
   return (
     <form action={formAction} className="space-y-4">

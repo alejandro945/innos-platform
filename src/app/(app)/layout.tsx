@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Toaster } from "sonner";
 import { auth } from "@/auth";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
@@ -22,6 +23,7 @@ export default async function AppLayout({
         />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
+      <Toaster richColors position="top-right" />
     </div>
   );
 }

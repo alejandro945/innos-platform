@@ -4,8 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, EmptyState } from "@/components/ui";
+import { Trash2 } from "lucide-react";
 import { Modal } from "@/components/modal";
-import { DeleteButton } from "@/components/delete-button";
+import { MutateButton } from "@/components/mutate-button";
 import { Pagination } from "@/components/pagination";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { ITEM_KIND_LABELS } from "@/lib/constants";
@@ -179,7 +180,15 @@ export default async function TarifasPage({
                               }}
                             />
                           </Modal>
-                          <DeleteButton action={deleteRate} id={r.id} />
+                          <MutateButton
+                            action={deleteRate}
+                            fields={{ id: r.id }}
+                            variant="danger"
+                            confirmText="¿Borrar esta tarifa?"
+                            title="Borrar"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </MutateButton>
                         </div>
                       </td>
                     )}

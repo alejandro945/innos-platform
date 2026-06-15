@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import { Field, Input, Textarea, Select, SubmitButton } from "@/components/form";
 import { useModalClose } from "@/components/modal";
 import { createRate, updateRate, type ActionState } from "./actions";
@@ -40,9 +41,13 @@ export function RateForm({
   useEffect(() => {
     if (state.ok) {
       formRef.current?.reset();
+      toast.success(isEdit ? "Tarifa actualizada." : "Tarifa registrada.");
       close();
     }
-  }, [state.ok, close]);
+  }, [state.ok, close, isEdit]);
+  useEffect(() => {
+    if (state.error) toast.error(state.error);
+  }, [state.error]);
 
   if (!isEdit && (!items?.length || !providers?.length)) {
     return (

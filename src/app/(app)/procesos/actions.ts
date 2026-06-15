@@ -12,6 +12,7 @@ import { parseSpreadsheet } from "@/lib/parse";
 import { normalizeUpload } from "@/lib/normalize";
 import { generateComparison } from "@/lib/comparison";
 import { parsePrice } from "@/lib/number";
+import type { ActionResult } from "@/lib/action-result";
 import { inngest, EVENTS } from "@/inngest/client";
 import {
   suggestColumnMapping,
@@ -81,18 +82,21 @@ export async function updateProcess(
   return { ok: true };
 }
 
-export async function deleteProcess(formData: FormData) {
+export async function deleteProcess(
+  formData: FormData,
+): Promise<ActionResult> {
   const session = await requireRoles("ADMIN", "PROCUREMENT_ANALYST");
   const id = String(formData.get("id"));
   const existing = await prisma.procurementProcess.findFirst({
     where: { id, organizationId: session.organizationId },
     select: { id: true },
   });
-  if (!existing) return;
+  if (!existing) return { ok: false, message: "Proceso no encontrado." };
   // Uploads/items/mappings/comparisons cascade; promoted rates are kept
   // (sourceUploadId is set null), so the repository is not affected.
   await prisma.procurementProcess.delete({ where: { id } });
   revalidatePath("/procesos");
+  return { ok: true, message: "Proceso eliminado." };
 }
 
 /** Upload a provider file, store it, parse it and suggest a column mapping. */

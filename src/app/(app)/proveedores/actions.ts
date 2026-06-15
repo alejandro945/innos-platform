@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRoles } from "@/lib/session";
+import type { ActionResult } from "@/lib/action-result";
 
 const providerSchema = z.object({
   name: z.string().trim().min(2, "El nombre es obligatorio."),
@@ -93,30 +94,42 @@ export async function updateProvider(
   return { ok: true };
 }
 
-export async function deleteProvider(formData: FormData) {
+export async function deleteProvider(
+  formData: FormData,
+): Promise<ActionResult> {
   const session = await requireRoles("ADMIN", "PROVIDER_MANAGER");
   const id = String(formData.get("id"));
   const provider = await prisma.provider.findFirst({
     where: { id, organizationId: session.organizationId },
     include: { _count: { select: { rateCards: true, uploads: true } } },
   });
-  if (!provider) return;
-  // Block delete when there are associated rates/uploads (FK + data safety).
-  if (provider._count.rateCards > 0 || provider._count.uploads > 0) return;
+  if (!provider) return { ok: false, message: "Proveedor no encontrado." };
+  if (provider._count.rateCards > 0 || provider._count.uploads > 0) {
+    return {
+      ok: false,
+      message:
+        "No se puede borrar: tiene tarifas o cargas asociadas. Desactívelo en su lugar.",
+    };
+  }
   await prisma.provider.delete({ where: { id } });
   revalidatePath("/proveedores");
+  return { ok: true, message: "Proveedor eliminado." };
 }
 
-export async function toggleProviderStatus(formData: FormData) {
+export async function toggleProviderStatus(
+  formData: FormData,
+): Promise<ActionResult> {
   const session = await requireRoles("ADMIN", "PROVIDER_MANAGER");
   const id = String(formData.get("id"));
   const provider = await prisma.provider.findFirst({
     where: { id, organizationId: session.organizationId },
   });
-  if (!provider) return;
-  await prisma.provider.update({
-    where: { id },
-    data: { status: provider.status === "ACTIVE" ? "INACTIVE" : "ACTIVE" },
-  });
+  if (!provider) return { ok: false, message: "Proveedor no encontrado." };
+  const next = provider.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+  await prisma.provider.update({ where: { id }, data: { status: next } });
   revalidatePath("/proveedores");
+  return {
+    ok: true,
+    message: next === "ACTIVE" ? "Proveedor activado." : "Proveedor desactivado.",
+  };
 }

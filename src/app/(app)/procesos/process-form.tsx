@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect } from "react";
+import { toast } from "sonner";
 import { Field, Input, Textarea, SubmitButton } from "@/components/form";
 import { useModalClose } from "@/components/modal";
 import { createProcess, updateProcess, type ActionState } from "./actions";
@@ -18,8 +19,14 @@ export function ProcessForm({
   const close = useModalClose();
 
   useEffect(() => {
-    if (state.ok) close();
+    if (state.ok) {
+      toast.success("Proceso actualizado.");
+      close();
+    }
   }, [state.ok, close]);
+  useEffect(() => {
+    if (state.error) toast.error(state.error);
+  }, [state.error]);
 
   return (
     <form action={formAction} className="space-y-4">

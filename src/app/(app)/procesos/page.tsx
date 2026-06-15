@@ -3,8 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, EmptyState } from "@/components/ui";
+import { Trash2 } from "lucide-react";
 import { Modal } from "@/components/modal";
-import { DeleteButton } from "@/components/delete-button";
+import { MutateButton } from "@/components/mutate-button";
 import { Pagination } from "@/components/pagination";
 import { formatDate } from "@/lib/format";
 import {
@@ -121,11 +122,15 @@ export default async function ProcesosPage({
                                 }}
                               />
                             </Modal>
-                            <DeleteButton
+                            <MutateButton
                               action={deleteProcess}
-                              id={p.id}
+                              fields={{ id: p.id }}
+                              variant="danger"
                               confirmText={`¿Borrar el proceso "${p.name}"? Se eliminan sus cargas y comparaciones (las tarifas ya cargadas al repositorio se conservan).`}
-                            />
+                              title="Borrar"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </MutateButton>
                           </>
                         )}
                       </div>

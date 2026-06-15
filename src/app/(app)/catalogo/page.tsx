@@ -2,8 +2,9 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, EmptyState } from "@/components/ui";
+import { Trash2 } from "lucide-react";
 import { Modal } from "@/components/modal";
-import { DeleteButton } from "@/components/delete-button";
+import { MutateButton } from "@/components/mutate-button";
 import { Pagination } from "@/components/pagination";
 import { ITEM_KIND_LABELS } from "@/lib/constants";
 import { ItemForm } from "./item-form";
@@ -122,20 +123,15 @@ export default async function CatalogoPage({
                               }}
                             />
                           </Modal>
-                          {it._count.rateCards === 0 ? (
-                            <DeleteButton
-                              action={deleteCanonicalItem}
-                              id={it.id}
-                              confirmText={`¿Borrar el ítem "${it.name}"?`}
-                            />
-                          ) : (
-                            <span
-                              className="px-2 py-1.5 text-xs text-slate-300"
-                              title="No se puede borrar: tiene tarifas asociadas."
-                            >
-                              —
-                            </span>
-                          )}
+                          <MutateButton
+                            action={deleteCanonicalItem}
+                            fields={{ id: it.id }}
+                            variant="danger"
+                            confirmText={`¿Borrar el ítem "${it.name}"?`}
+                            title="Borrar"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </MutateButton>
                         </div>
                       </td>
                     )}

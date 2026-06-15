@@ -2,9 +2,9 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, EmptyState } from "@/components/ui";
+import { Trash2 } from "lucide-react";
 import { Modal } from "@/components/modal";
-import { ActionButton } from "@/components/action-button";
-import { DeleteButton } from "@/components/delete-button";
+import { MutateButton } from "@/components/mutate-button";
 import { Pagination } from "@/components/pagination";
 import { formatDate } from "@/lib/format";
 import { ProviderForm } from "./provider-form";
@@ -102,12 +102,13 @@ export default async function ProveedoresPage({
                     {canManage && (
                       <td className="px-5 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          <form action={toggleProviderStatus}>
-                            <input type="hidden" name="id" value={p.id} />
-                            <ActionButton variant="link">
-                              {p.status === "ACTIVE" ? "Desactivar" : "Activar"}
-                            </ActionButton>
-                          </form>
+                          <MutateButton
+                            action={toggleProviderStatus}
+                            fields={{ id: p.id }}
+                            variant="link"
+                          >
+                            {p.status === "ACTIVE" ? "Desactivar" : "Activar"}
+                          </MutateButton>
                           <Modal
                             triggerLabel="Editar"
                             title="Editar proveedor"
@@ -123,21 +124,15 @@ export default async function ProveedoresPage({
                               }}
                             />
                           </Modal>
-                          {p._count.rateCards === 0 &&
-                          p._count.uploads === 0 ? (
-                            <DeleteButton
-                              action={deleteProvider}
-                              id={p.id}
-                              confirmText={`¿Borrar el proveedor "${p.name}"?`}
-                            />
-                          ) : (
-                            <span
-                              className="px-2 py-1.5 text-xs text-slate-300"
-                              title="No se puede borrar: tiene tarifas o cargas asociadas. Desactívelo."
-                            >
-                              —
-                            </span>
-                          )}
+                          <MutateButton
+                            action={deleteProvider}
+                            fields={{ id: p.id }}
+                            variant="danger"
+                            confirmText={`¿Borrar el proveedor "${p.name}"?`}
+                            title="Borrar"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </MutateButton>
                         </div>
                       </td>
                     )}

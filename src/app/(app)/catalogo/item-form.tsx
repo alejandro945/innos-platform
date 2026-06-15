@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import { Field, Input, Textarea, Select, SubmitButton } from "@/components/form";
 import { useModalClose } from "@/components/modal";
 import { ITEM_KINDS, ITEM_KIND_LABELS } from "@/lib/constants";
@@ -36,9 +37,13 @@ export function ItemForm({ initial }: { initial?: ItemInitial }) {
   useEffect(() => {
     if (state.ok) {
       formRef.current?.reset();
+      toast.success(isEdit ? "Ítem actualizado." : "Ítem creado.");
       close();
     }
-  }, [state.ok, close]);
+  }, [state.ok, close, isEdit]);
+  useEffect(() => {
+    if (state.error) toast.error(state.error);
+  }, [state.error]);
 
   return (
     <form ref={formRef} action={formAction} className="space-y-4">

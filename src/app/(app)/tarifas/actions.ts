@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRoles } from "@/lib/session";
+import type { ActionResult } from "@/lib/action-result";
 
 const rateSchema = z.object({
   canonicalItemId: z.string().trim().min(1, "Seleccione un ítem canónico."),
@@ -126,7 +127,7 @@ export async function updateRate(
   return { ok: true };
 }
 
-export async function deleteRate(formData: FormData) {
+export async function deleteRate(formData: FormData): Promise<ActionResult> {
   const session = await requireRoles(
     "ADMIN",
     "PROCUREMENT_ANALYST",
@@ -137,7 +138,8 @@ export async function deleteRate(formData: FormData) {
     where: { id, organizationId: session.organizationId },
     select: { id: true },
   });
-  if (!existing) return;
+  if (!existing) return { ok: false, message: "Tarifa no encontrada." };
   await prisma.rateCard.delete({ where: { id } });
   revalidatePath("/tarifas");
+  return { ok: true, message: "Tarifa eliminada." };
 }

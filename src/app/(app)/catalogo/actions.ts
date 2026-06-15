@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRoles } from "@/lib/session";
 import { embedCanonicalItem } from "@/lib/embed-items";
+import type { ActionResult } from "@/lib/action-result";
 
 const itemSchema = z.object({
   kind: z.enum(["SERVICE", "MEDICATION", "DEVICE", "SUPPLY"]),
@@ -123,16 +124,23 @@ export async function updateCanonicalItem(
   return { ok: true };
 }
 
-export async function deleteCanonicalItem(formData: FormData) {
+export async function deleteCanonicalItem(
+  formData: FormData,
+): Promise<ActionResult> {
   const session = await requireRoles("ADMIN");
   const id = String(formData.get("id"));
   const item = await prisma.canonicalItem.findFirst({
     where: { id, organizationId: session.organizationId },
     include: { _count: { select: { rateCards: true } } },
   });
-  if (!item) return;
-  // Block delete when rates reference this item.
-  if (item._count.rateCards > 0) return;
+  if (!item) return { ok: false, message: "Ítem no encontrado." };
+  if (item._count.rateCards > 0) {
+    return {
+      ok: false,
+      message: "No se puede borrar: tiene tarifas asociadas.",
+    };
+  }
   await prisma.canonicalItem.delete({ where: { id } });
   revalidatePath("/catalogo");
+  return { ok: true, message: "Ítem eliminado." };
 }
