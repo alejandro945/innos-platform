@@ -22,7 +22,7 @@ Plataforma web para centralizar las tarifas de proveedores, estandarizar
 - [x] **Fase 1 — Data store:** CRUD proveedores/catálogo/tarifas + importador Excel.
 - [x] **Fase 2 — Carga y parseo:** procesos, subida de archivo, parseo, mapeo de columnas con IA.
 - [x] **Fase 3 — Normalización con IA:** embeddings + pgvector, recuperación de candidatos, agente Claude, pipeline (Inngest + fallback inline), bandeja de revisión que aprende.
-- [ ] **Fase 4 — Comparación y reportes**
+- [x] **Fase 4 — Comparación y reportes:** comparación por ítem (mín/máx/prom + mejor precio + ahorro), exportación Excel, reporte imprimible (PDF), página de reportes.
 - [ ] **Fase 5 — Avanzadas** · [ ] **Fase 6 — Hardening**
 
 ### Activar la IA (Fase 3)

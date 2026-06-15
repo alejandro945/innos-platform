@@ -9,6 +9,7 @@ import { requireRoles } from "@/lib/session";
 import { storeProviderFile } from "@/lib/blob";
 import { parseSpreadsheet } from "@/lib/parse";
 import { normalizeUpload } from "@/lib/normalize";
+import { generateComparison } from "@/lib/comparison";
 import { inngest, EVENTS } from "@/inngest/client";
 import {
   suggestColumnMapping,
@@ -228,4 +229,20 @@ export async function requestNormalization(formData: FormData) {
   }
 
   revalidatePath(`/procesos/${upload.processId}`);
+}
+
+/** Generate (or regenerate) the comparison for a process. */
+export async function createComparison(formData: FormData) {
+  const session = await requireRoles("ADMIN", "PROCUREMENT_ANALYST");
+  const processId = String(formData.get("processId"));
+
+  const process = await prisma.procurementProcess.findFirst({
+    where: { id: processId, organizationId: session.organizationId },
+    select: { id: true },
+  });
+  if (!process) return;
+
+  await generateComparison(processId, session.organizationId);
+  revalidatePath(`/procesos/${processId}/comparacion`);
+  redirect(`/procesos/${processId}/comparacion`);
 }

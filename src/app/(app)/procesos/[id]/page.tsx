@@ -71,11 +71,19 @@ export default async function ProcessDetailPage({
         title={process.name}
         subtitle={process.description ?? undefined}
         action={
-          <span
-            className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${PROCESS_STATUS_STYLES[process.status]}`}
-          >
-            {PROCESS_STATUS_LABELS[process.status]}
-          </span>
+          <div className="flex items-center gap-3">
+            <span
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${PROCESS_STATUS_STYLES[process.status]}`}
+            >
+              {PROCESS_STATUS_LABELS[process.status]}
+            </span>
+            <Link
+              href={`/procesos/${process.id}/comparacion`}
+              className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              Ver comparación
+            </Link>
+          </div>
         }
       />
 
