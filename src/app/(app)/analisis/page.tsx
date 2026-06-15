@@ -120,44 +120,60 @@ export default async function AnalisisPage({
               Recomendación de adjudicación
             </h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              Por cada ítem con 2+ proveedores con tarifa vigente, el proveedor
-              más barato y cuánto ahorrarías frente al promedio si lo adjudicas a
-              él. La suma de esos ahorros es el “ahorro potencial de la canasta”.
+              Compara el mismo servicio entre <strong>proveedores distintos</strong>:
+              a quién conviene adjudicarlo (el más barato) y cuánto ahorras frente
+              al promedio de proveedores. Solo aparecen ítems con 2+ proveedores.
             </p>
           </div>
           {simulation.lines.length === 0 ? (
-            <p className="px-5 py-4 text-sm text-slate-500">
-              Se necesitan ítems con al menos dos proveedores vigentes.
-            </p>
+            <div className="px-5 py-10 text-center">
+              <p className="text-sm font-medium text-slate-700">
+                Aún no hay nada que recomendar
+              </p>
+              <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
+                Esta recomendación compara <strong>el mismo ítem entre varios
+                proveedores</strong>. Necesitas tarifas vigentes de al menos{" "}
+                <strong>2 proveedores</strong> para el mismo servicio. Carga el
+                tarifario de otro proveedor y vuelve aquí.
+              </p>
+            </div>
           ) : (
             <table className="w-full text-sm">
               <thead className="border-b border-slate-200 text-left text-xs uppercase text-slate-400">
                 <tr>
                   <th className="px-5 py-2 font-medium">Ítem</th>
-                  <th className="px-5 py-2 font-medium">Mejor proveedor</th>
-                  <th className="px-5 py-2 font-medium">Mejor precio</th>
-                  <th className="px-5 py-2 font-medium">Promedio</th>
-                  <th className="px-5 py-2 font-medium">Ahorro</th>
+                  <th className="px-5 py-2 text-center font-medium">Provs.</th>
+                  <th className="px-5 py-2 font-medium">Adjudicar a</th>
+                  <th className="px-5 py-2 text-right font-medium">Mejor precio</th>
+                  <th className="px-5 py-2 text-right font-medium">Promedio</th>
+                  <th className="px-5 py-2 text-right font-medium">Ahorro</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {simulation.lines.map((l) => (
-                  <tr key={l.itemCode}>
-                    <td className="px-5 py-2">
-                      <span className="font-mono text-xs text-slate-500">
+                  <tr key={l.itemCode} className="hover:bg-slate-50">
+                    <td className="px-5 py-2.5">
+                      <span className="block font-mono text-[11px] text-slate-400">
                         {l.itemCode}
-                      </span>{" "}
-                      {l.itemName}
+                      </span>
+                      <span className="text-slate-900">{l.itemName}</span>
                     </td>
-                    <td className="px-5 py-2 text-slate-700">{l.bestProvider}</td>
-                    <td className="px-5 py-2 font-medium text-slate-900">
+                    <td className="px-5 py-2.5 text-center text-slate-500">
+                      {l.providerCount}
+                    </td>
+                    <td className="px-5 py-2.5">
+                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                        {l.bestProvider}
+                      </span>
+                    </td>
+                    <td className="px-5 py-2.5 text-right font-semibold text-slate-900">
                       {formatCurrency(l.bestValue)}
                     </td>
-                    <td className="px-5 py-2 text-slate-500">
+                    <td className="px-5 py-2.5 text-right text-slate-400">
                       {formatCurrency(l.avgValue)}
                     </td>
-                    <td className="px-5 py-2 text-emerald-700">
-                      {formatCurrency(l.savings)}
+                    <td className="px-5 py-2.5 text-right font-medium text-emerald-700">
+                      {l.savings > 0 ? `− ${formatCurrency(l.savings)}` : "—"}
                     </td>
                   </tr>
                 ))}

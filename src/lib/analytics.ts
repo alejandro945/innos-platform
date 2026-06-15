@@ -115,8 +115,8 @@ export type SimulatorLine = {
   bestProvider: string;
   bestValue: number;
   avgValue: number;
-  optionCount: number;
-  savings: number; // avg - best
+  providerCount: number;
+  savings: number; // avg-of-providers - best
 };
 
 export type SavingsSimulation = {
@@ -127,8 +127,10 @@ export type SavingsSimulation = {
 };
 
 /**
- * Recommend the cheapest current provider per item and estimate savings vs the
- * average (proxy for "if we always picked the best option").
+ * Recommend the cheapest provider per item, comparing ACROSS providers.
+ * Collapses each provider to its cheapest price for the item, and only
+ * considers items with at least two distinct providers (a real comparison).
+ * "savings" = average across providers − best provider's price.
  */
 export async function savingsSimulator(
   organizationId: string,
@@ -143,22 +145,33 @@ export async function savingsSimulator(
 
   const lines: SimulatorLine[] = [];
   for (const list of byItem.values()) {
-    if (list.length < 2) continue;
-    const priced = list
-      .map((r) => ({ r, v: Number(r.value) }))
-      .filter((x) => x.v > 0);
-    if (priced.length < 2) continue;
-    const values = priced.map((x) => x.v);
-    const best = priced.reduce((a, b) => (b.v < a.v ? b : a));
+    // Cheapest price per provider (ignore zero/blank).
+    const perProvider = new Map<
+      string,
+      { name: string; value: number }
+    >();
+    for (const r of list) {
+      const v = Number(r.value);
+      if (!(v > 0)) continue;
+      const cur = perProvider.get(r.providerId);
+      if (!cur || v < cur.value)
+        perProvider.set(r.providerId, { name: r.provider.name, value: v });
+    }
+    if (perProvider.size < 2) continue; // need ≥2 providers to compare
+
+    const entries = [...perProvider.values()];
+    const values = entries.map((e) => e.value);
+    const best = entries.reduce((a, b) => (b.value < a.value ? b : a));
     const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    const ci = list[0].canonicalItem;
     lines.push({
-      itemCode: best.r.canonicalItem.canonicalCode,
-      itemName: best.r.canonicalItem.name,
-      bestProvider: best.r.provider.name,
-      bestValue: best.v,
+      itemCode: ci.canonicalCode,
+      itemName: ci.name,
+      bestProvider: best.name,
+      bestValue: best.value,
       avgValue: Math.round(avg),
-      optionCount: priced.length,
-      savings: Math.round(avg - best.v),
+      providerCount: perProvider.size,
+      savings: Math.round(avg - best.value),
     });
   }
   lines.sort((a, b) => b.savings - a.savings);
