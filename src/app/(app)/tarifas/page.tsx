@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, ItemKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { hasAnyRole } from "@/lib/rbac";
@@ -8,8 +8,9 @@ import { Trash2 } from "lucide-react";
 import { Modal } from "@/components/modal";
 import { MutateButton } from "@/components/mutate-button";
 import { Pagination } from "@/components/pagination";
+import { TableFilters } from "@/components/table-filters";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { ITEM_KIND_LABELS } from "@/lib/constants";
+import { ITEM_KIND_LABELS, ITEM_KINDS } from "@/lib/constants";
 import { RateForm } from "./rate-form";
 import { deleteRate } from "./actions";
 
@@ -20,12 +21,23 @@ const PAGE_SIZE = 25;
 export default async function TarifasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vigentes?: string; page?: string }>;
+  searchParams: Promise<{
+    vigentes?: string;
+    page?: string;
+    q?: string;
+    tipo?: string;
+    proveedor?: string;
+  }>;
 }) {
   const session = await requireSession();
   const sp = await searchParams;
   const onlyCurrent = sp.vigentes === "1";
   const page = Math.max(1, Number(sp.page) || 1);
+  const q = sp.q?.trim();
+  const tipo = ITEM_KINDS.includes(sp.tipo as ItemKind)
+    ? (sp.tipo as ItemKind)
+    : undefined;
+  const proveedor = sp.proveedor?.trim() || undefined;
   const canManage = hasAnyRole(
     session.roles,
     "ADMIN",
@@ -40,6 +52,22 @@ export default async function TarifasPage({
       ? {
           validFrom: { lte: now },
           OR: [{ validTo: null }, { validTo: { gte: now } }],
+        }
+      : {}),
+    ...(proveedor ? { providerId: proveedor } : {}),
+    ...(q || tipo
+      ? {
+          canonicalItem: {
+            ...(tipo ? { kind: tipo } : {}),
+            ...(q
+              ? {
+                  OR: [
+                    { name: { contains: q, mode: "insensitive" } },
+                    { canonicalCode: { contains: q, mode: "insensitive" } },
+                  ],
+                }
+              : {}),
+          },
         }
       : {}),
   };
@@ -107,13 +135,40 @@ export default async function TarifasPage({
         }
       />
 
-      {total === 0 ? (
+      {total === 0 && !q && !tipo && !proveedor ? (
         <EmptyState
           title="Sin tarifas"
           description="Registre tarifas, impórtelas del Excel, o cárguelas desde un proceso de contratación."
         />
       ) : (
         <>
+          <TableFilters
+            searchPlaceholder="Buscar por ítem o código…"
+            selects={[
+              {
+                name: "tipo",
+                allLabel: "Todos los tipos",
+                options: ITEM_KINDS.map((k) => ({
+                  value: k,
+                  label: ITEM_KIND_LABELS[k],
+                })),
+              },
+              {
+                name: "proveedor",
+                allLabel: "Todos los proveedores",
+                options: providerOptions.map((p) => ({
+                  value: p.id,
+                  label: p.label,
+                })),
+              },
+            ]}
+          />
+          {total === 0 ? (
+            <Card>
+              <p className="text-sm text-slate-500">Sin resultados.</p>
+            </Card>
+          ) : (
+          <>
           <Card className="overflow-hidden p-0">
             <table className="w-full text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500">
@@ -202,8 +257,15 @@ export default async function TarifasPage({
             page={page}
             pageSize={PAGE_SIZE}
             total={total}
-            params={onlyCurrent ? { vigentes: "1" } : undefined}
+            params={{
+              ...(onlyCurrent ? { vigentes: "1" } : {}),
+              ...(q ? { q } : {}),
+              ...(tipo ? { tipo } : {}),
+              ...(proveedor ? { proveedor } : {}),
+            }}
           />
+          </>
+          )}
         </>
       )}
     </div>

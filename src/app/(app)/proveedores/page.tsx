@@ -2,10 +2,12 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, EmptyState } from "@/components/ui";
+import type { Prisma } from "@prisma/client";
 import { Trash2 } from "lucide-react";
 import { Modal } from "@/components/modal";
 import { MutateButton } from "@/components/mutate-button";
 import { Pagination } from "@/components/pagination";
+import { TableFilters } from "@/components/table-filters";
 import { formatDate } from "@/lib/format";
 import { ProviderForm } from "./provider-form";
 import { toggleProviderStatus, deleteProvider } from "./actions";
@@ -15,13 +17,26 @@ const PAGE_SIZE = 20;
 export default async function ProveedoresPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; q?: string }>;
 }) {
   const session = await requireSession();
   const canManage = hasAnyRole(session.roles, "ADMIN", "PROVIDER_MANAGER");
-  const page = Math.max(1, Number((await searchParams).page) || 1);
+  const sp = await searchParams;
+  const page = Math.max(1, Number(sp.page) || 1);
+  const q = sp.q?.trim();
 
-  const where = { organizationId: session.organizationId };
+  const where: Prisma.ProviderWhereInput = {
+    organizationId: session.organizationId,
+    ...(q
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            { nit: { contains: q, mode: "insensitive" } },
+            { contactName: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
   const [providers, total] = await Promise.all([
     prisma.provider.findMany({
       where,
@@ -47,13 +62,22 @@ export default async function ProveedoresPage({
         }
       />
 
-      {total === 0 ? (
+      {total === 0 && !q ? (
         <EmptyState
           title="Sin proveedores"
           description="Agregue proveedores para asociar sus tarifarios y compararlos."
         />
       ) : (
         <>
+          <TableFilters searchPlaceholder="Buscar por nombre, NIT o contacto…" />
+          {total === 0 ? (
+            <Card>
+              <p className="text-sm text-slate-500">
+                Sin resultados para “{q}”.
+              </p>
+            </Card>
+          ) : (
+          <>
           <Card className="overflow-hidden p-0">
             <table className="w-full text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500">
@@ -147,6 +171,8 @@ export default async function ProveedoresPage({
             pageSize={PAGE_SIZE}
             total={total}
           />
+          </>
+          )}
         </>
       )}
     </div>
