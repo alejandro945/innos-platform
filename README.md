@@ -24,7 +24,8 @@ Plataforma web para centralizar las tarifas de proveedores, estandarizar
 - [x] **Fase 3 — Normalización con IA:** embeddings + pgvector, recuperación de candidatos, agente Claude, pipeline (Inngest + fallback inline), bandeja de revisión que aprende.
 - [x] **Fase 4 — Comparación y reportes:** comparación por ítem (mín/máx/prom + mejor precio + ahorro), exportación Excel, reporte imprimible (PDF), página de reportes.
 - [x] **Fase 5 — Avanzadas:** búsqueda en lenguaje natural (IA), simulador de ahorro / recomendación de adjudicación, detección de anomalías de precio, alertas de vencimiento de tarifas, alertas en el dashboard.
-- [ ] **Fase 6 — Hardening**
+- [x] **UX:** toasts (sonner), modales accesibles, búsqueda + filtros en tablas, revisión en lote (alta confianza / crear-aprobar sin-match / selección múltiple) con typeahead y candidatos IA, error boundary, vista previa de mapeo, checklist de onboarding, comparación 1-por-proveedor, administración (usuarios + auditoría).
+- [ ] **Fase 6 — Hardening** (tests e2e, observabilidad)
 
 ### Capa de IA — proveedores
 

@@ -198,7 +198,14 @@ export default async function TarifasPage({
                       </span>
                     </td>
                     <td className="px-5 py-3 text-slate-600">
-                      {r.provider.name}
+                      <span className="flex items-center gap-2">
+                        {r.provider.name}
+                        {r.sourceUploadId && (
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                            Desde proceso
+                          </span>
+                        )}
+                      </span>
                       {r.tariffSource && (
                         <span className="block text-xs text-slate-400">
                           {r.tariffSource}

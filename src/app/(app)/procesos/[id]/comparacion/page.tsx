@@ -13,10 +13,13 @@ import { createComparison } from "../../actions";
 
 export default async function ComparacionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ dedupe?: string }>;
 }) {
   const { id } = await params;
+  const dedupe = (await searchParams).dedupe === "1";
   const session = await requireSession();
   const canManage = hasAnyRole(session.roles, "ADMIN", "PROCUREMENT_ANALYST");
 
@@ -90,6 +93,16 @@ export default async function ComparacionPage({
             >
               <Printer className="h-4 w-4" /> Reporte / PDF
             </Link>
+            <Link
+              href={`/procesos/${id}/comparacion${dedupe ? "" : "?dedupe=1"}`}
+              className={
+                dedupe
+                  ? "inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-900"
+                  : "inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              }
+            >
+              {dedupe ? "Mostrando 1 por proveedor" : "1 fila por proveedor"}
+            </Link>
             {canManage && (
               <form action={createComparison}>
                 <input type="hidden" name="processId" value={id} />
@@ -116,7 +129,7 @@ export default async function ComparacionPage({
               </p>
             </Card>
           ) : (
-            <ComparisonView lines={comparison.lines} />
+            <ComparisonView lines={comparison.lines} dedupe={dedupe} />
           )}
         </>
       )}

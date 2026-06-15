@@ -12,7 +12,25 @@ export type ComparisonLineRow = {
   data: StoredLineOptions;
 };
 
-export function ComparisonView({ lines }: { lines: ComparisonLineRow[] }) {
+/** Keep only the cheapest option per provider. */
+function dedupeByProvider(options: StoredLineOptions["options"]) {
+  const best = new Map<string, (typeof options)[number]>();
+  for (const o of options) {
+    const cur = best.get(o.providerId);
+    if (!cur || (o.value ?? Infinity) < (cur.value ?? Infinity)) {
+      best.set(o.providerId, o);
+    }
+  }
+  return [...best.values()];
+}
+
+export function ComparisonView({
+  lines,
+  dedupe = false,
+}: {
+  lines: ComparisonLineRow[];
+  dedupe?: boolean;
+}) {
   if (lines.length === 0) {
     return (
       <p className="text-sm text-slate-500">
@@ -57,7 +75,7 @@ export function ComparisonView({ lines }: { lines: ComparisonLineRow[] }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {line.data.options
+              {(dedupe ? dedupeByProvider(line.data.options) : line.data.options)
                 .slice()
                 .sort((a, b) => (a.value ?? Infinity) - (b.value ?? Infinity))
                 .map((opt, i) => {
