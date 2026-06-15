@@ -6,36 +6,57 @@ import {
   Building2,
   ArrowRight,
 } from "lucide-react";
-import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/session";
 import { PageHeader, StatCard, Card } from "@/components/ui";
 
 export default async function DashboardPage() {
-  const session = await auth();
-  const firstName = session?.user?.name?.split(" ")[0] ?? "";
+  const session = await requireSession();
+  const firstName = session.name?.split(" ")[0] ?? "";
+  const orgId = session.organizationId;
 
-  // Placeholder metrics — wired to the data store in Phase 1.
+  const [activeProcesses, pendingReviews, activeProviders, rateCount] =
+    await Promise.all([
+      prisma.procurementProcess.count({
+        where: {
+          organizationId: orgId,
+          status: { in: ["PROCESSING", "IN_REVIEW"] },
+        },
+      }),
+      prisma.itemMapping.count({
+        where: {
+          status: "PENDING_REVIEW",
+          providerItem: { provider: { organizationId: orgId } },
+        },
+      }),
+      prisma.provider.count({
+        where: { organizationId: orgId, status: "ACTIVE" },
+      }),
+      prisma.rateCard.count({ where: { organizationId: orgId } }),
+    ]);
+
   const stats = [
     {
       label: "Procesos activos",
-      value: "0",
+      value: String(activeProcesses),
       hint: "En curso o en revisión",
       icon: FileStack,
     },
     {
       label: "Pendientes de revisión",
-      value: "0",
+      value: String(pendingReviews),
       hint: "Homologaciones por validar",
       icon: ClipboardCheck,
     },
     {
-      label: "Ahorro identificado",
-      value: "$0",
-      hint: "Acumulado del periodo",
+      label: "Tarifas registradas",
+      value: String(rateCount),
+      hint: "En el repositorio",
       icon: TrendingDown,
     },
     {
       label: "Proveedores activos",
-      value: "0",
+      value: String(activeProviders),
       hint: "Con tarifas vigentes",
       icon: Building2,
     },

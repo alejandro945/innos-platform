@@ -33,7 +33,7 @@ export const PERMISSIONS = {
     roles.some(
       (r) => r === "ADMIN" || r === "PROCUREMENT_ANALYST" || r === "REVIEWER",
     ),
-  viewReports: (_roles: Role[]) => true,
+  viewReports: () => true,
 } as const;
 
 export function hasAnyRole(roles: Role[] | undefined, ...allowed: Role[]) {
