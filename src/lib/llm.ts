@@ -27,6 +27,14 @@ function ollamaBaseUrl(): string {
   return process.env.OLLAMA_BASE_URL || "http://localhost:11434";
 }
 
+/** Headers for Ollama, with optional bearer token (for a protected proxy). */
+export function ollamaHeaders(): Record<string, string> {
+  const h: Record<string, string> = { "Content-Type": "application/json" };
+  if (process.env.OLLAMA_API_KEY)
+    h.Authorization = `Bearer ${process.env.OLLAMA_API_KEY}`;
+  return h;
+}
+
 export type StructuredRequest = {
   prompt: string;
   /** JSON Schema describing the expected object. */
@@ -92,7 +100,7 @@ async function runOllama(
     `${ollamaBaseUrl()}/api/chat`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: ollamaHeaders(),
       body: JSON.stringify({
         model: ollamaModel(),
         stream: false,
