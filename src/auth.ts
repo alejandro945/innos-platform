@@ -51,25 +51,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!isLocalAdminEnabled()) return null;
         const email = String(creds?.email ?? "").toLowerCase().trim();
         const password = String(creds?.password ?? "");
-        if (
-          email !== process.env.LOCAL_ADMIN_EMAIL!.toLowerCase().trim() ||
-          password !== process.env.LOCAL_ADMIN_PASSWORD
-        ) {
-          return null;
+        // Trim env values defensively (Vercel can carry trailing newlines).
+        const expectedEmail = process.env
+          .LOCAL_ADMIN_EMAIL!.toLowerCase()
+          .trim();
+        const expectedPassword = process.env.LOCAL_ADMIN_PASSWORD!.trim();
+        if (email !== expectedEmail || password.trim() !== expectedPassword) {
+          return null; // wrong credentials
         }
-        const organizationId = await getDefaultOrganizationId();
-        const user = await prisma.user.upsert({
-          where: { email },
-          update: {},
-          create: { email, name: "Administrador", organizationId },
-        });
-        // Ensure ADMIN role.
-        await prisma.userRole.upsert({
-          where: { userId_role: { userId: user.id, role: "ADMIN" } },
-          update: {},
-          create: { userId: user.id, role: "ADMIN" },
-        });
-        return { id: user.id, email: user.email, name: user.name };
+        try {
+          const organizationId = await getDefaultOrganizationId();
+          const user = await prisma.user.upsert({
+            where: { email },
+            update: {},
+            create: { email, name: "Administrador", organizationId },
+          });
+          await prisma.userRole.upsert({
+            where: { userId_role: { userId: user.id, role: "ADMIN" } },
+            update: {},
+            create: { userId: user.id, role: "ADMIN" },
+          });
+          return { id: user.id, email: user.email, name: user.name };
+        } catch (e) {
+          // Surface DB/migration problems in the logs (otherwise it looks like
+          // "wrong credentials"). Common cause: prod DB not migrated.
+          console.error("[local-admin] DB error during sign-in:", e);
+          throw new Error("DB_ERROR");
+        }
       },
     }),
   ],
