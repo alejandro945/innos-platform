@@ -14,7 +14,7 @@ import {
 import type { ColumnMapping } from "@/lib/column-mapping";
 import { UploadForm } from "./upload-form";
 import { MappingForm } from "./mapping-form";
-import { requestNormalization } from "../actions";
+import { requestNormalization, promoteUploadRates } from "../actions";
 
 export default async function ProcessDetailPage({
   params,
@@ -49,21 +49,53 @@ export default async function ProcessDetailPage({
   // Mapping status counts per upload (ItemMapping has no uploadId, so reduce in JS).
   const mappings = await prisma.itemMapping.findMany({
     where: { providerItem: { upload: { processId: id } } },
-    select: { status: true, providerItem: { select: { uploadId: true } } },
+    select: {
+      status: true,
+      canonicalItemId: true,
+      providerItem: { select: { uploadId: true, rawPrice: true } },
+    },
   });
   const counts = new Map<
     string,
-    { mapped: number; auto: number; pending: number; noMatch: number }
+    {
+      mapped: number;
+      auto: number;
+      pending: number;
+      noMatch: number;
+      promotable: number;
+    }
   >();
   for (const m of mappings) {
     const key = m.providerItem.uploadId;
-    const c = counts.get(key) ?? { mapped: 0, auto: 0, pending: 0, noMatch: 0 };
+    const c =
+      counts.get(key) ??
+      { mapped: 0, auto: 0, pending: 0, noMatch: 0, promotable: 0 };
     c.mapped++;
-    if (m.status === "AUTO_APPROVED" || m.status === "APPROVED") c.auto++;
+    const approved = m.status === "AUTO_APPROVED" || m.status === "APPROVED";
+    if (approved) c.auto++;
     else if (m.status === "PENDING_REVIEW") c.pending++;
     else if (m.status === "NO_MATCH" || m.status === "REJECTED") c.noMatch++;
+    if (approved && m.canonicalItemId && m.providerItem.rawPrice !== null) {
+      c.promotable++;
+    }
     counts.set(key, c);
   }
+
+  // Rates already promoted to the repository, per upload.
+  const promotedGroups = await prisma.rateCard.groupBy({
+    by: ["sourceUploadId"],
+    where: {
+      organizationId: session.organizationId,
+      sourceUploadId: { in: process.uploads.map((u) => u.id) },
+    },
+    _count: true,
+  });
+  const promoted = new Map<string, number>();
+  for (const g of promotedGroups) {
+    if (g.sourceUploadId) promoted.set(g.sourceUploadId, g._count);
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <div>
@@ -193,6 +225,54 @@ export default async function ProcessDetailPage({
                         </div>
                       );
                     })()}
+
+                    {/* Promote approved + priced tariffs to the repository. */}
+                    {canManage &&
+                      (() => {
+                        const c = counts.get(upload.id);
+                        const promotedCount = promoted.get(upload.id) ?? 0;
+                        if (!c || c.promotable === 0) return null;
+                        return (
+                          <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                            <div className="text-sm text-emerald-900">
+                              <strong>{c.promotable}</strong> tarifas homologadas
+                              y aprobadas
+                              {promotedCount > 0 && (
+                                <span className="ml-1 text-emerald-700">
+                                  · {promotedCount} ya en el repositorio
+                                </span>
+                              )}
+                            </div>
+                            <form
+                              action={promoteUploadRates}
+                              className="ml-auto flex items-center gap-2"
+                            >
+                              <input
+                                type="hidden"
+                                name="uploadId"
+                                value={upload.id}
+                              />
+                              <label className="text-xs text-emerald-900">
+                                Vigencia desde
+                                <input
+                                  type="date"
+                                  name="validFrom"
+                                  defaultValue={today}
+                                  className="ml-2 rounded-md border border-emerald-300 bg-white px-2 py-1 text-xs"
+                                />
+                              </label>
+                              <button
+                                type="submit"
+                                className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                              >
+                                {promotedCount > 0
+                                  ? "Recargar al repositorio"
+                                  : "Cargar tarifas al repositorio"}
+                              </button>
+                            </form>
+                          </div>
+                        );
+                      })()}
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">

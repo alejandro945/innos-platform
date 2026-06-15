@@ -226,6 +226,77 @@ export async function requestNormalization(formData: FormData) {
   revalidatePath(`/procesos/${upload.processId}`);
 }
 
+/**
+ * Promote an upload's approved homologations into the rate repository.
+ * Creates a RateCard per provider item that is approved + priced, so the new
+ * provider's tariffs become part of the permanent data store (already
+ * normalized to canonical items). Idempotent: replaces rates from this upload.
+ */
+export async function promoteUploadRates(formData: FormData) {
+  const session = await requireRoles(
+    "ADMIN",
+    "PROCUREMENT_ANALYST",
+    "PROVIDER_MANAGER",
+  );
+  const uploadId = String(formData.get("uploadId"));
+  const validFromRaw = String(formData.get("validFrom") || "");
+
+  const upload = await prisma.processUpload.findFirst({
+    where: { id: uploadId, process: { organizationId: session.organizationId } },
+    select: { id: true, processId: true, providerId: true, fileName: true },
+  });
+  if (!upload) return;
+
+  const items = await prisma.providerItem.findMany({
+    where: {
+      uploadId,
+      rawPrice: { not: null },
+      mapping: {
+        canonicalItemId: { not: null },
+        status: { in: ["APPROVED", "AUTO_APPROVED"] },
+      },
+    },
+    include: { mapping: true },
+  });
+
+  const validFrom = validFromRaw ? new Date(validFromRaw) : new Date();
+
+  await prisma.$transaction(async (tx) => {
+    // Replace any rates previously promoted from this same upload.
+    await tx.rateCard.deleteMany({ where: { sourceUploadId: uploadId } });
+
+    for (const item of items) {
+      if (!item.mapping?.canonicalItemId || item.rawPrice === null) continue;
+      await tx.rateCard.create({
+        data: {
+          organizationId: session.organizationId,
+          canonicalItemId: item.mapping.canonicalItemId,
+          providerId: upload.providerId,
+          tariffSource: upload.fileName,
+          value: item.rawPrice,
+          exclusions: item.exclusions,
+          validFrom,
+          sourceUploadId: uploadId,
+        },
+      });
+    }
+
+    await tx.auditLog.create({
+      data: {
+        organizationId: session.organizationId,
+        actorId: session.userId,
+        action: "rates.promoted",
+        entityType: "ProcessUpload",
+        entityId: uploadId,
+        after: { count: items.length },
+      },
+    });
+  });
+
+  revalidatePath(`/procesos/${upload.processId}`);
+  revalidatePath("/tarifas");
+}
+
 /** Generate (or regenerate) the comparison for a process. */
 export async function createComparison(formData: FormData) {
   const session = await requireRoles("ADMIN", "PROCUREMENT_ANALYST");
