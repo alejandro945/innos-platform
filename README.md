@@ -118,13 +118,64 @@ necesita).
    pnpm backfill:embeddings
    ```
 
-### 2. IA → Ollama Cloud
-1. Crea una API key en **ollama.com → Settings → Keys**.
-2. Configura `OLLAMA_BASE_URL=https://ollama.com` + `OLLAMA_API_KEY` (el código ya
-   envía el bearer token; sirve igual para un proxy protegido).
-3. Pon en `OLLAMA_CHAT_MODEL` el nombre exacto de un modelo del catálogo cloud.
-4. Embeddings: usa `nomic-embed-text` si está disponible (768), o cambia a OpenAI
-   (1536), o déjalo vacío (modo léxico).
+### 2. IA → Ollama (elige una)
+
+**Opción A — Ollama Cloud** (gestionado, requiere suscripción para varios modelos):
+1. API key en **ollama.com → Settings → Keys**.
+2. `OLLAMA_BASE_URL=https://ollama.com` + `OLLAMA_API_KEY` + `OLLAMA_CHAT_MODEL`
+   (nombre exacto del catálogo cloud que soporte `format`).
+
+**Opción B — Ollama autohospedado en Oracle Cloud (Always Free)** — gratis, CPU:
+
+1. **VM**: OCI → Compute → Instance → Ubuntu 22.04, shape
+   **VM.Standard.A1.Flex** (Ampere ARM), 4 OCPU / 24 GB (Always Free). Guarda la
+   IP pública y tu llave SSH.
+2. **Red OCI**: en la VCN → Security List/NSG agrega Ingress TCP 80 y 443 desde
+   `0.0.0.0/0`.
+3. **Firewall del SO** (las imágenes de Oracle traen iptables restrictivo):
+   ```bash
+   sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
+   sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
+   sudo netfilter-persistent save
+   ```
+4. **Instala Ollama y baja modelos** (queda en `127.0.0.1:11434`, privado):
+   ```bash
+   curl -fsSL https://ollama.com/install.sh | sh
+   ollama pull qwen2.5:3b
+   ollama pull nomic-embed-text
+   ```
+5. **Caddy como proxy con token + HTTPS** (necesitas un dominio apuntando a la IP
+   para TLS automático de Let's Encrypt):
+   ```bash
+   sudo apt install -y caddy
+   ```
+   `/etc/caddy/Caddyfile`:
+   ```
+   ollama.TU-DOMINIO.com {
+     @unauth not header Authorization "Bearer {$OLLAMA_TOKEN}"
+     respond @unauth 401
+     reverse_proxy 127.0.0.1:11434
+   }
+   ```
+   Define el token y reinicia:
+   ```bash
+   sudo systemctl edit caddy   # agrega: [Service]\nEnvironment=OLLAMA_TOKEN=<token-largo>
+   sudo systemctl restart caddy
+   ```
+6. **Configura la app**:
+   ```bash
+   OLLAMA_BASE_URL=https://ollama.TU-DOMINIO.com
+   OLLAMA_API_KEY=<el mismo OLLAMA_TOKEN>
+   OLLAMA_CHAT_MODEL=qwen2.5:3b
+   ```
+   > Sin dominio puedes usar `http://IP_VM:11434` (la app llama server-to-server,
+   > no hay mixed-content), pero el tráfico viajaría sin cifrar — usa el proxy con
+   > token y, si puedes, HTTPS. Rendimiento: en CPU, `qwen2.5:3b` es el punto
+   > dulce; modelos 7B+ funcionan pero más lentos (Inngest lo hace tolerable).
+
+**Embeddings (cualquier opción):** `nomic-embed-text` (768) si tu Ollama lo
+expone, OpenAI (1536), o vacío → modo léxico. Si fallan, el sistema cae a léxico
+automáticamente.
 
 ### 3. Inngest (cola durable — necesario en serverless)
 La homologación de cientos de ítems excede el límite de una función de Vercel.
