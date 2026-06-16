@@ -40,7 +40,7 @@ function ollamaBaseUrl(): string {
   return process.env.OLLAMA_BASE_URL || "http://localhost:11434";
 }
 
-const EMBED_TIMEOUT_MS = Number(process.env.EMBED_TIMEOUT_MS) || 30_000;
+const EMBED_TIMEOUT_MS = Number(process.env.EMBED_TIMEOUT_MS) || 15_000;
 
 async function openaiEmbed(inputs: string[]): Promise<(number[] | null)[]> {
   const res = await fetchWithTimeout(
@@ -87,16 +87,43 @@ async function ollamaEmbed(inputs: string[]): Promise<(number[] | null)[]> {
   return inputs.map((_, i) => data.embeddings![i] ?? null);
 }
 
+// Circuit breaker: if embeddings keep failing (e.g. provider doesn't support
+// them), stop calling after a few failures so retrieval falls back to lexical
+// instantly instead of timing out on every item.
+let consecutiveFailures = 0;
+let disabledForRun = false;
+const FAILURE_LIMIT = 3;
+
+/** Never throws: returns null entries on any failure so callers can fall back. */
 async function embedBatch(inputs: string[]): Promise<(number[] | null)[]> {
   const p = provider();
-  if (p === "openai") return openaiEmbed(inputs);
-  if (p === "ollama") return ollamaEmbed(inputs);
-  return inputs.map(() => null);
+  if (p === "none" || disabledForRun) return inputs.map(() => null);
+  try {
+    const result =
+      p === "openai" ? await openaiEmbed(inputs) : await ollamaEmbed(inputs);
+    if (result.every((r) => r === null)) {
+      consecutiveFailures++;
+    } else {
+      consecutiveFailures = 0;
+    }
+    if (consecutiveFailures >= FAILURE_LIMIT && !disabledForRun) {
+      disabledForRun = true;
+      console.warn(
+        `[embeddings] desactivados tras ${FAILURE_LIMIT} fallos seguidos; usando recuperación léxica.`,
+      );
+    }
+    return result;
+  } catch (e) {
+    consecutiveFailures++;
+    if (consecutiveFailures >= FAILURE_LIMIT) disabledForRun = true;
+    console.warn("[embeddings] error, usando léxico:", (e as Error).message);
+    return inputs.map(() => null);
+  }
 }
 
 export async function getEmbedding(text: string): Promise<number[] | null> {
   const input = normalizeText(text);
-  if (!input || provider() === "none") return null;
+  if (!input) return null;
   const [vec] = await embedBatch([input]);
   return vec ?? null;
 }
@@ -105,6 +132,5 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
 export async function getEmbeddings(
   texts: string[],
 ): Promise<(number[] | null)[]> {
-  if (provider() === "none") return texts.map(() => null);
   return embedBatch(texts.map(normalizeText));
 }
