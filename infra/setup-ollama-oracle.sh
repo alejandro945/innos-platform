@@ -17,6 +17,12 @@ EMBED_MODEL="${EMBED_MODEL:-nomic-embed-text}"
 
 echo "==> Instalando Ollama (escucha en 127.0.0.1:11434, privado)"
 curl -fsSL https://ollama.com/install.sh | sh
+sudo systemctl enable --now ollama
+echo "Esperando a que la API de Ollama responda..."
+for i in $(seq 1 60); do
+  curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+  sleep 2
+done
 ollama pull "$CHAT_MODEL"
 ollama pull "$EMBED_MODEL" || echo "(embeddings opcionales: el sistema cae a léxico)"
 
@@ -48,8 +54,14 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl restart caddy
 
-echo "==> Abriendo el firewall del SO para el puerto $PORT"
-sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport "$PORT" -j ACCEPT || true
+echo "==> Abriendo el firewall del SO para el puerto $PORT (antes del REJECT)"
+sudo iptables -D INPUT -m state --state NEW -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null || true
+REJ=$(sudo iptables -L INPUT --line-numbers -n | awk '/REJECT/{print $1; exit}')
+if [ -n "$REJ" ]; then
+  sudo iptables -I INPUT "$REJ" -m state --state NEW -p tcp --dport "$PORT" -j ACCEPT
+else
+  sudo iptables -A INPUT -m state --state NEW -p tcp --dport "$PORT" -j ACCEPT
+fi
 sudo netfilter-persistent save 2>/dev/null || sudo bash -c 'iptables-save > /etc/iptables/rules.v4' || true
 
 IP="$(curl -fsS ifconfig.me || echo '<IP-PUBLICA>')"
