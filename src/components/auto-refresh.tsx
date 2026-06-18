@@ -11,26 +11,26 @@ import { useRouter } from "next/navigation";
  */
 export function AutoRefresh({
   processId,
-  baseIntervalMs = 6000,
-  maxIntervalMs = 30000,
+  pollMs = 6000,
+  refreshThrottleMs = 15000,
 }: {
   processId: string;
-  baseIntervalMs?: number;
-  maxIntervalMs?: number;
+  pollMs?: number;
+  refreshThrottleMs?: number;
 }) {
   const router = useRouter();
   const lastSignature = useRef<string | null>(null);
+  const lastRefresh = useRef<number>(0);
 
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
-    let interval = baseIntervalMs;
 
     const tick = async () => {
       if (cancelled) return;
-      // Skip work when the tab isn't visible.
+      // Skip polling while the tab isn't visible.
       if (document.visibilityState !== "visible") {
-        timer = setTimeout(tick, interval);
+        timer = setTimeout(tick, pollMs);
         return;
       }
       try {
@@ -42,30 +42,34 @@ export function AutoRefresh({
             active: boolean;
             signature: string;
           };
-          if (data.signature !== lastSignature.current) {
-            lastSignature.current = data.signature;
-            interval = baseIntervalMs; // reset backoff on change
-            router.refresh(); // heavy refresh only when something moved
-          } else {
-            interval = Math.min(Math.round(interval * 1.5), maxIntervalMs);
-          }
+          const changed = data.signature !== lastSignature.current;
+          lastSignature.current = data.signature;
+
           if (!data.active) {
-            router.refresh(); // final state, then stop polling
+            // Job finished -> one final refresh, then stop polling entirely.
+            router.refresh();
             return;
+          }
+          // While running, refresh the heavy UI at most once per throttle window
+          // (the progress number still moves; we just don't re-render on every tick).
+          const now = Date.now();
+          if (changed && now - lastRefresh.current >= refreshThrottleMs) {
+            lastRefresh.current = now;
+            router.refresh();
           }
         }
       } catch {
-        interval = Math.min(Math.round(interval * 1.5), maxIntervalMs);
+        // ignore; will retry next tick
       }
-      if (!cancelled) timer = setTimeout(tick, interval);
+      if (!cancelled) timer = setTimeout(tick, pollMs);
     };
 
-    timer = setTimeout(tick, baseIntervalMs);
+    timer = setTimeout(tick, pollMs);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [processId, baseIntervalMs, maxIntervalMs, router]);
+  }, [processId, pollMs, refreshThrottleMs, router]);
 
   return null;
 }
