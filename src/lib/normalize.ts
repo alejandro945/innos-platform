@@ -13,6 +13,12 @@ export const CONFIDENCE_THRESHOLDS = {
   review: 0.6,
 } as const;
 
+// Above this retrieval score, accept the top candidate without calling the LLM
+// (the slow part). Lower = faster but less precise. Tunable via env.
+const AUTO_ACCEPT_SCORE = Number(process.env.AUTO_ACCEPT_SCORE) || 0.92;
+// How many candidates to retrieve / send to the LLM (smaller prompt = faster).
+const CANDIDATE_LIMIT = Number(process.env.CANDIDATE_LIMIT) || 5;
+
 export type NormalizeSummary = {
   total: number;
   autoApproved: number;
@@ -89,11 +95,47 @@ export async function normalizeProviderItem(providerItemId: string) {
     });
   }
 
-  // 3. Retrieve candidates + AI decision.
+  // 3. Retrieve candidates.
   const candidates = await retrieveCandidates(
     organizationId,
     `${item.rawName} ${item.rawUnit ?? ""}`.trim(),
+    CANDIDATE_LIMIT,
   );
+
+  const candidateSnapshot = candidates.slice(0, 5).map((c) => ({
+    id: c.id,
+    code: c.canonicalCode,
+    name: c.name,
+    score: Math.round(c.score * 100) / 100,
+  }));
+
+  // 3a. Short-circuit: a near-perfect candidate is accepted WITHOUT the LLM
+  // (the LLM call is the slow part). Big speedup on large files.
+  const top = candidates[0];
+  if (top && top.score >= AUTO_ACCEPT_SCORE) {
+    return persistMapping(providerItemId, {
+      canonicalItemId: top.id,
+      confidence: top.score,
+      method: "VECTOR",
+      status: "AUTO_APPROVED",
+      rationale: `Coincidencia muy alta (${Math.round(top.score * 100)}%) sin IA.`,
+      candidates: candidateSnapshot,
+    });
+  }
+
+  // 3b. No candidates at all -> no point asking the LLM.
+  if (candidates.length === 0) {
+    return persistMapping(providerItemId, {
+      canonicalItemId: null,
+      confidence: 0,
+      method: isLlmEnabled() ? "AI" : "VECTOR",
+      status: "NO_MATCH",
+      rationale: "Sin candidatos en el catálogo.",
+      candidates: [],
+    });
+  }
+
+  // 3c. Ambiguous -> let the LLM decide among the candidates.
   const decision = await decideHomologation(
     { rawName: item.rawName, rawCode: item.rawCode, rawUnit: item.rawUnit },
     candidates,
@@ -105,12 +147,7 @@ export async function normalizeProviderItem(providerItemId: string) {
     method: isLlmEnabled() ? "AI" : "VECTOR",
     status: statusForConfidence(decision.canonicalItemId, decision.confidence),
     rationale: decision.rationale,
-    candidates: candidates.slice(0, 5).map((c) => ({
-      id: c.id,
-      code: c.canonicalCode,
-      name: c.name,
-      score: Math.round(c.score * 100) / 100,
-    })),
+    candidates: candidateSnapshot,
   });
 }
 
