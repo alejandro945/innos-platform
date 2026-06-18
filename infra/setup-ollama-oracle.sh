@@ -42,7 +42,10 @@ sudo tee /etc/caddy/Caddyfile >/dev/null <<EOF
 :$PORT {
 	@unauth not header Authorization "Bearer {\$OLLAMA_TOKEN}"
 	respond @unauth 401
-	reverse_proxy 127.0.0.1:11434
+	reverse_proxy 127.0.0.1:11434 {
+		# Ollama rejects non-localhost Host headers (anti DNS-rebinding) -> 403.
+		header_up Host {upstream_hostport}
+	}
 }
 EOF
 
