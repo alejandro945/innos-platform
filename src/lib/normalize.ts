@@ -96,7 +96,7 @@ export async function normalizeProviderItem(providerItemId: string) {
   }
 
   // 3. Retrieve candidates.
-  const candidates = await retrieveCandidates(
+  const { method: retrievalMethod, candidates } = await retrieveCandidates(
     organizationId,
     `${item.rawName} ${item.rawUnit ?? ""}`.trim(),
     CANDIDATE_LIMIT,
@@ -109,16 +109,21 @@ export async function normalizeProviderItem(providerItemId: string) {
     score: Math.round(c.score * 100) / 100,
   }));
 
-  // 3a. Short-circuit: a near-perfect candidate is accepted WITHOUT the LLM
-  // (the LLM call is the slow part). Big speedup on large files.
+  // 3a. Short-circuit a near-perfect candidate WITHOUT the LLM (the slow part).
+  // Only AUTO-APPROVE when the score is semantic (vector). A high *lexical*
+  // score can be a false friend (same words, different service), so we skip the
+  // LLM but still send it to human review instead of auto-approving.
   const top = candidates[0];
   if (top && top.score >= AUTO_ACCEPT_SCORE) {
+    const trustworthy = retrievalMethod === "vector";
     return persistMapping(providerItemId, {
       canonicalItemId: top.id,
       confidence: top.score,
       method: "VECTOR",
-      status: "AUTO_APPROVED",
-      rationale: `Coincidencia muy alta (${Math.round(top.score * 100)}%) sin IA.`,
+      status: trustworthy ? "AUTO_APPROVED" : "PENDING_REVIEW",
+      rationale: trustworthy
+        ? `Coincidencia semántica muy alta (${Math.round(top.score * 100)}%).`
+        : `Coincidencia textual alta (${Math.round(top.score * 100)}%) — requiere revisión.`,
       candidates: candidateSnapshot,
     });
   }

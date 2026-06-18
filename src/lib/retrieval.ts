@@ -66,27 +66,37 @@ function lexicalScore(a: string, b: string): number {
   return inter / (ta.size + tb.size - inter);
 }
 
+export type RetrievalMethod = "vector" | "lexical" | "none";
+export type RetrievalResult = {
+  method: RetrievalMethod;
+  candidates: Candidate[];
+};
+
 /**
  * Retrieve top-K canonical candidates for a provider item.
- * Prefers vector search; falls back to in-memory lexical scoring.
+ * Prefers vector (semantic) search; falls back to in-memory lexical scoring.
+ * Returns the method so callers can trust a vector score more than a lexical one.
  */
 export async function retrieveCandidates(
   organizationId: string,
   text: string,
   limit = 8,
-): Promise<Candidate[]> {
+): Promise<RetrievalResult> {
   const embedding = await getEmbedding(text);
   if (embedding) {
     const vec = await searchSimilarItems(organizationId, embedding, limit);
     if (vec.length > 0) {
-      return vec.map((v) => ({
-        id: v.id,
-        canonicalCode: v.canonicalCode,
-        name: v.name,
-        description: v.description,
-        kind: v.kind,
-        score: Math.max(0, 1 - v.distance),
-      }));
+      return {
+        method: "vector",
+        candidates: vec.map((v) => ({
+          id: v.id,
+          canonicalCode: v.canonicalCode,
+          name: v.name,
+          description: v.description,
+          kind: v.kind,
+          score: Math.max(0, 1 - v.distance),
+        })),
+      };
     }
   }
 
@@ -102,7 +112,7 @@ export async function retrieveCandidates(
     },
   });
 
-  return items
+  const candidates = items
     .map((it) => ({
       ...it,
       kind: String(it.kind),
@@ -111,4 +121,6 @@ export async function retrieveCandidates(
     .filter((c) => c.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
+
+  return { method: candidates.length ? "lexical" : "none", candidates };
 }
