@@ -8,6 +8,9 @@ const { auth } = NextAuth(authConfig);
 export default auth;
 
 export const config = {
-  // Protect everything except static assets, the auth API and image files.
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.png$).*)"],
+  // Protect everything except static assets, the auth + inngest APIs and images.
+  // `/api/inngest` must stay public so Inngest can sync/invoke it (no session).
+  matcher: [
+    "/((?!api/auth|api/inngest|_next/static|_next/image|favicon.ico|.*\\.png$).*)",
+  ],
 };
