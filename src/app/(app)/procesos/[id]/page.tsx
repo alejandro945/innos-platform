@@ -177,7 +177,7 @@ export default async function ProcessDetailPage({
 
   return (
     <div>
-      {anyNormalizing && <AutoRefresh />}
+      {anyNormalizing && <AutoRefresh processId={process.id} />}
       <PageHeader
         title={process.name}
         subtitle={process.description ?? undefined}
