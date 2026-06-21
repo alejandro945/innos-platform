@@ -31,6 +31,7 @@ export async function GET(
         Proveedor: opt.providerName,
         Valor: opt.value ?? "",
         "Mejor precio": opt.providerId === line.bestProviderId ? "SÍ" : "",
+        Inclusiones: opt.inclusions ?? "",
         Exclusiones: opt.exclusions ?? "",
         "Mínimo del ítem": line.minValue ?? "",
         "Máximo del ítem": line.maxValue ?? "",

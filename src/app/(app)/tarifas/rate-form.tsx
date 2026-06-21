@@ -16,6 +16,7 @@ export type RateInitial = {
   providerLabel: string;
   tariffSource: string | null;
   value: string;
+  inclusions: string | null;
   exclusions: string | null;
   validFrom: string; // yyyy-mm-dd
   validTo: string; // yyyy-mm-dd or ""
@@ -141,6 +142,16 @@ export function RateForm({
           />
         </Field>
       </div>
+
+      <Field label="Inclusiones" htmlFor="inclusions">
+        <Textarea
+          id="inclusions"
+          name="inclusions"
+          rows={2}
+          defaultValue={initial?.inclusions ?? ""}
+          placeholder="Incluye lectura e informe…"
+        />
+      </Field>
 
       <Field label="Exclusiones" htmlFor="exclusions">
         <Textarea

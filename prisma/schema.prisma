@@ -182,6 +182,7 @@ model RateCard {
   value           Decimal   @db.Decimal(14, 2)
   currency        String    @default("COP")
   unit            String?
+  inclusions      String?
   exclusions      String?
   validFrom       DateTime
   validTo         DateTime?
@@ -272,6 +273,7 @@ model ProviderItem {
   rawUnit    String?
   rawPrice   Decimal? @db.Decimal(14, 2)
   currency   String   @default("COP")
+  inclusions String?
   exclusions String?
 
   upload   ProcessUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)

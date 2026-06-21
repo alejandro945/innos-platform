@@ -5,6 +5,7 @@ export type ComparisonOption = {
   providerId: string;
   providerName: string;
   value: number | null;
+  inclusions: string | null;
   exclusions: string | null;
 };
 
@@ -68,6 +69,7 @@ export async function generateComparison(
       providerId: it.providerId,
       providerName: it.provider.name,
       value,
+      inclusions: it.inclusions,
       exclusions: it.exclusions,
     });
   }

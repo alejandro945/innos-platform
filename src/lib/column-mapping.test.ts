@@ -17,6 +17,7 @@ describe("heuristicMapping", () => {
       code: "CUPS PROPIO",
       price: "VALOR", // not "TARIFARIO" (regression guard for the \btarifa\b fix)
       unit: null,
+      inclusions: null,
       exclusions: "EXCLUSIONES",
     });
   });

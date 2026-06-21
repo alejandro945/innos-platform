@@ -231,6 +231,7 @@ export default async function TarifasPage({
                                 providerLabel: r.provider.name,
                                 tariffSource: r.tariffSource,
                                 value: r.value.toString(),
+                                inclusions: r.inclusions,
                                 exclusions: r.exclusions,
                                 validFrom: toDateInput(r.validFrom),
                                 validTo: toDateInput(r.validTo),

@@ -7,6 +7,7 @@ export const MAPPING_FIELDS = [
   "code",
   "price",
   "unit",
+  "inclusions",
   "exclusions",
 ] as const;
 export type MappingField = (typeof MAPPING_FIELDS)[number];
@@ -19,6 +20,7 @@ export const FIELD_LABELS: Record<MappingField, string> = {
   code: "Código (CUPS/CUM)",
   price: "Valor / precio",
   unit: "Unidad",
+  inclusions: "Inclusiones",
   exclusions: "Exclusiones",
 };
 
@@ -27,6 +29,7 @@ const mappingSchema = z.object({
   code: z.string().nullable(),
   price: z.string().nullable(),
   unit: z.string().nullable(),
+  inclusions: z.string().nullable(),
   exclusions: z.string().nullable(),
 });
 
@@ -37,7 +40,9 @@ const KEYWORDS: Record<MappingField, RegExp> = {
   price: /(valor|precio|\btarifa\b|costo|\bvr\.?\b|importe|total)/i,
   // \bum\b avoids matching "CUM"/"CUPS"; \bund?\b catches "und"/"un".
   unit: /(unidad|\bund?\b|medida|presentaci|\bum\b)/i,
-  exclusions: /(exclus|no incluye|observa|nota)/i,
+  // exclusions is matched before inclusions so "no incluye" goes to exclusions.
+  exclusions: /(exclus|no\s*incluye|observa|nota)/i,
+  inclusions: /(inclus|incluye|incluid)/i,
   name: /(nombre|descrip|servicio|producto|concepto|item|ítem|detalle)/i,
 };
 
@@ -46,6 +51,7 @@ const FIELD_PRIORITY: MappingField[] = [
   "price",
   "unit",
   "exclusions",
+  "inclusions",
   "name",
 ];
 
@@ -56,6 +62,7 @@ export function heuristicMapping(headers: string[]): ColumnMapping {
     code: null,
     price: null,
     unit: null,
+    inclusions: null,
     exclusions: null,
   };
   const used = new Set<string>();
@@ -98,6 +105,7 @@ export async function suggestColumnMapping(
         code: { type: ["string", "null"] },
         price: { type: ["string", "null"] },
         unit: { type: ["string", "null"] },
+        inclusions: { type: ["string", "null"] },
         exclusions: { type: ["string", "null"] },
       },
       required: [...MAPPING_FIELDS],

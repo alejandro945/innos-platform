@@ -71,6 +71,7 @@ export function ComparisonView({
               <tr>
                 <th className="px-4 py-2 font-medium">Proveedor</th>
                 <th className="px-4 py-2 font-medium">Valor</th>
+                <th className="px-4 py-2 font-medium">Inclusiones</th>
                 <th className="px-4 py-2 font-medium">Exclusiones</th>
               </tr>
             </thead>
@@ -93,6 +94,9 @@ export function ComparisonView({
                       </td>
                       <td className="px-4 py-2 font-medium text-slate-900">
                         {formatCurrency(opt.value)}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-slate-500">
+                        {opt.inclusions ?? "—"}
                       </td>
                       <td className="px-4 py-2 text-xs text-slate-500">
                         {opt.exclusions ?? "—"}

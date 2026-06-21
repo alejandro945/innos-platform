@@ -196,6 +196,7 @@ export async function confirmMapping(formData: FormData) {
     code: null,
     price: null,
     unit: null,
+    inclusions: null,
     exclusions: null,
   };
   for (const field of MAPPING_FIELDS) {
@@ -222,6 +223,9 @@ export async function confirmMapping(formData: FormData) {
           rawCode: mapping.code ? String(row[mapping.code] ?? "").trim() || null : null,
           rawUnit: mapping.unit ? String(row[mapping.unit] ?? "").trim() || null : null,
           rawPrice: mapping.price ? parsePrice(row[mapping.price]) : null,
+          inclusions: mapping.inclusions
+            ? String(row[mapping.inclusions] ?? "").trim() || null
+            : null,
           exclusions: mapping.exclusions
             ? String(row[mapping.exclusions] ?? "").trim() || null
             : null,
@@ -362,6 +366,7 @@ export async function promoteUploadRates(formData: FormData) {
           providerId: upload.providerId,
           tariffSource: upload.fileName,
           value: item.rawPrice,
+          inclusions: item.inclusions,
           exclusions: item.exclusions,
           validFrom,
           validTo,
