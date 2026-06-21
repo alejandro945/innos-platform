@@ -7,6 +7,7 @@ import {
   Download,
   Printer,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
@@ -33,6 +34,7 @@ import {
   promoteUploadRates,
   pauseNormalization,
   createComparison,
+  deleteUpload,
 } from "../actions";
 
 export default async function ProcessDetailPage({
@@ -294,9 +296,22 @@ export default async function ProcessDetailPage({
                       · {upload.provider.name} · {upload.rowCount} filas
                     </span>
                   </div>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                    {UPLOAD_STATUS_LABELS[upload.status]}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                      {UPLOAD_STATUS_LABELS[upload.status]}
+                    </span>
+                    {canManage && upload.status !== "NORMALIZING" && (
+                      <MutateButton
+                        action={deleteUpload}
+                        fields={{ uploadId: upload.id }}
+                        variant="danger"
+                        confirmText={`¿Eliminar el archivo "${upload.fileName}"? Se borran sus ítems y homologaciones (las tarifas ya cargadas al repositorio se conservan).`}
+                        title="Eliminar archivo"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </MutateButton>
+                    )}
+                  </div>
                 </div>
 
                 {upload.status === "MAPPING" && cm.headers && cm.mapping && (

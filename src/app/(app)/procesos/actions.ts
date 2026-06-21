@@ -176,6 +176,34 @@ export async function uploadAndParse(
   return { ok: true };
 }
 
+/** Delete an uploaded file (e.g. wrong file). Cascades its items + mappings;
+ *  rates already promoted to the repository are kept (sourceUploadId -> null). */
+export async function deleteUpload(formData: FormData): Promise<ActionResult> {
+  const session = await requireRoles("ADMIN", "PROCUREMENT_ANALYST");
+  const uploadId = String(formData.get("uploadId"));
+
+  const upload = await prisma.processUpload.findFirst({
+    where: { id: uploadId, process: { organizationId: session.organizationId } },
+    select: { id: true, processId: true, blobUrl: true },
+  });
+  if (!upload) return { ok: false, message: "Archivo no encontrado." };
+
+  await prisma.processUpload.delete({ where: { id: uploadId } });
+
+  // Best-effort: remove the stored raw file from blob storage.
+  if (upload.blobUrl) {
+    try {
+      const { del } = await import("@vercel/blob");
+      await del(upload.blobUrl);
+    } catch {
+      /* ignore — file cleanup is non-critical */
+    }
+  }
+
+  revalidatePath(`/procesos/${upload.processId}`);
+  return { ok: true, message: "Archivo eliminado." };
+}
+
 /** Confirm the column mapping and materialize ProviderItem rows. */
 export async function confirmMapping(formData: FormData) {
   const session = await requireRoles("ADMIN", "PROCUREMENT_ANALYST");
