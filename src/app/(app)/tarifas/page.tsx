@@ -176,6 +176,7 @@ export default async function TarifasPage({
                   <th className="px-5 py-3 font-medium">Ítem</th>
                   <th className="px-5 py-3 font-medium">Proveedor</th>
                   <th className="px-5 py-3 font-medium">Valor</th>
+                  <th className="px-5 py-3 font-medium">Inclusiones</th>
                   <th className="px-5 py-3 font-medium">Exclusiones</th>
                   <th className="px-5 py-3 font-medium">Vigencia</th>
                   {canManage && (
@@ -209,6 +210,9 @@ export default async function TarifasPage({
                     </td>
                     <td className="px-5 py-3 font-medium text-slate-900">
                       {formatCurrency(r.value.toString())}
+                    </td>
+                    <td className="px-5 py-3 text-xs text-slate-600">
+                      {r.inclusions ?? "—"}
                     </td>
                     <td className="px-5 py-3 text-xs text-slate-600">
                       {r.exclusions ?? "—"}
