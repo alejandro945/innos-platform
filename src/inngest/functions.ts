@@ -2,11 +2,22 @@ import { prisma } from "@/lib/prisma";
 import { normalizeProviderItem, finalizeUpload } from "@/lib/normalize";
 import { inngest, EVENTS } from "./client";
 
-// Items processed per run. Each item costs 2 steps (lookup + normalize), so the
-// per-run step count is ~2*BATCH + a few. Keep 2*BATCH well under Inngest's
-// 1000-step ceiling. When a file has more pending items than this, the run
-// re-triggers itself (continuation event) to process the rest in a fresh run.
+// Items processed per run before handing off to a fresh run. Items are
+// normalized in parallel pages of NORMALIZE_CONCURRENCY, so per-run steps are
+// ~(BATCH/CONCURRENCY) page lookups + BATCH normalize steps. Keep that well
+// under Inngest's 1000-step ceiling; large files spill into continuation runs.
 const BATCH_SIZE = Number(process.env.NORMALIZE_BATCH_SIZE) || 400;
+
+// How many items to homologate at once within a run. Set this to your Inngest
+// plan's concurrency budget (free trial = 5) to use every available slot. The
+// real-world speedup depends on the AI backend keeping up: a single self-hosted
+// Ollama box must run with OLLAMA_NUM_PARALLEL >= this, or the concurrent LLM
+// calls just queue on the server. Items that short-circuit (code/prior match,
+// strong vector hit, no candidates) skip the LLM and parallelize cleanly.
+const CONCURRENCY = Math.max(
+  1,
+  Number(process.env.NORMALIZE_CONCURRENCY) || 5,
+);
 
 /**
  * Durable normalization workflow. Each provider item is its own step so it
@@ -23,6 +34,9 @@ const BATCH_SIZE = Number(process.env.NORMALIZE_BATCH_SIZE) || 400;
  *   to a fresh run via `continueNormalizeUpload`. This keeps each run under the
  *   1000-step limit for large files (thousands of rows) while progress (one
  *   persisted mapping per item) survives across runs.
+ * - Parallelism: items are normalized in pages of CONCURRENCY using parallel
+ *   steps, so the run uses the account's concurrent-step budget instead of
+ *   crawling one item at a time.
  */
 export const normalizeUploadFn = inngest.createFunction(
   {
@@ -53,31 +67,34 @@ export const normalizeUploadFn = inngest.createFunction(
       });
     });
 
-    // Process up to BATCH_SIZE pending items this run, checking for pause
-    // between each.
-    for (let i = 0; i < BATCH_SIZE; i++) {
-      const next = await step.run(`next-${i}`, async () => {
+    // Process up to BATCH_SIZE pending items this run, in parallel pages of
+    // CONCURRENCY, checking for pause before each page.
+    for (let processed = 0; processed < BATCH_SIZE; processed += CONCURRENCY) {
+      const page = await step.run(`page-${processed}`, async () => {
         const upload = await prisma.processUpload.findUnique({
           where: { id: uploadId },
           select: { status: true },
         });
-        if (upload?.status === "PAUSED") return { stop: "paused" as const };
-        const item = await prisma.providerItem.findFirst({
+        if (upload?.status === "PAUSED") return { paused: true, ids: [] };
+        const items = await prisma.providerItem.findMany({
           where: { uploadId, mapping: { is: null } },
           select: { id: true },
+          take: CONCURRENCY,
         });
-        return item
-          ? { stop: false as const, itemId: item.id }
-          : { stop: "done" as const };
+        return { paused: false, ids: items.map((it) => it.id) };
       });
 
-      if (next.stop === "paused") return { paused: true };
-      if (next.stop === "done") {
+      if (page.paused) return { paused: true };
+      if (page.ids.length === 0) {
         return step.run("finalize", () => finalizeUpload(uploadId));
       }
 
-      await step.run(`normalize-${next.itemId}`, () =>
-        normalizeProviderItem(next.itemId),
+      // Normalize this page concurrently. Each item is its own durable step, so
+      // a retry only re-runs the items that actually failed.
+      await Promise.all(
+        page.ids.map((id) =>
+          step.run(`normalize-${id}`, () => normalizeProviderItem(id)),
+        ),
       );
     }
 
