@@ -1,6 +1,14 @@
-import { Search, AlertTriangle, CalendarClock, TrendingDown } from "lucide-react";
+import {
+  Search,
+  AlertTriangle,
+  CalendarClock,
+  TrendingDown,
+  GitMerge,
+} from "lucide-react";
 import { requireSession } from "@/lib/session";
+import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, StatCard } from "@/components/ui";
+import { MutateButton } from "@/components/mutate-button";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
   detectPriceAnomalies,
@@ -8,6 +16,8 @@ import {
   savingsSimulator,
 } from "@/lib/analytics";
 import { naturalSearch } from "@/lib/nl-search";
+import { findCatalogDuplicates } from "@/lib/catalog-dedupe";
+import { mergeCanonicalItems } from "../catalogo/actions";
 
 export default async function AnalisisPage({
   searchParams,
@@ -15,14 +25,16 @@ export default async function AnalisisPage({
   searchParams: Promise<{ q?: string }>;
 }) {
   const session = await requireSession();
+  const canMerge = hasAnyRole(session.roles, "ADMIN");
   const { q } = await searchParams;
   const orgId = session.organizationId;
 
-  const [anomalies, expiring, simulation, search] = await Promise.all([
+  const [anomalies, expiring, simulation, search, duplicates] = await Promise.all([
     detectPriceAnomalies(orgId),
     expiringRates(orgId, 30),
     savingsSimulator(orgId),
     q ? naturalSearch(orgId, q) : Promise.resolve(null),
+    findCatalogDuplicates(orgId),
   ]);
 
   return (
@@ -252,6 +264,103 @@ export default async function AnalisisPage({
           )}
         </Card>
       </div>
+
+      {/* Catalog duplicate detection */}
+      <Card className="p-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-5 py-3">
+          <div className="flex items-center gap-2">
+            <GitMerge className="h-4 w-4 text-violet-500" />
+            <h2 className="text-base font-semibold text-slate-900">
+              Catálogo: posibles duplicados
+            </h2>
+          </div>
+          <span className="text-xs text-slate-400">
+            {duplicates.scannedItems} ítems revisados
+          </span>
+        </div>
+        <div className="px-5 py-3">
+          <p className="mb-3 text-xs text-slate-500">
+            Ítems del catálogo canónico que parecen ser el mismo servicio o
+            producto cargado dos veces (por nombre similar o significado
+            equivalente). Fusionarlos mueve sus tarifas y homologaciones al
+            ítem que conserves; el otro se elimina.
+          </p>
+          {duplicates.lexicalScanSkipped && (
+            <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              El catálogo es grande — solo se comparó por similitud semántica
+              (IA). Si algún proveedor no tiene IA configurada, algunos
+              duplicados por texto podrían no aparecer.
+            </p>
+          )}
+          {duplicates.pairs.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-500">
+              No se detectaron ítems duplicados.
+            </p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {duplicates.pairs.map((p) => (
+                <li
+                  key={`${p.a.id}-${p.b.id}`}
+                  className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex-1 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700">
+                        {Math.round(p.similarity * 100)}% similar
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        {p.method === "vector" ? "IA" : "texto"}
+                      </span>
+                    </div>
+                    <div className="mt-1 grid grid-cols-1 gap-1 sm:grid-cols-2">
+                      <div>
+                        <span className="font-mono text-xs text-slate-500">
+                          {p.a.canonicalCode}
+                        </span>{" "}
+                        <span className="text-slate-900">{p.a.name}</span>
+                        <span className="ml-1 text-xs text-slate-400">
+                          ({p.a.rateCount} tarifa{p.a.rateCount === 1 ? "" : "s"})
+                        </span>
+                      </div>
+                      <div>
+                        <span className="font-mono text-xs text-slate-500">
+                          {p.b.canonicalCode}
+                        </span>{" "}
+                        <span className="text-slate-900">{p.b.name}</span>
+                        <span className="ml-1 text-xs text-slate-400">
+                          ({p.b.rateCount} tarifa{p.b.rateCount === 1 ? "" : "s"})
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  {canMerge && (
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <MutateButton
+                        action={mergeCanonicalItems}
+                        fields={{ keepId: p.a.id, discardId: p.b.id }}
+                        variant="secondary"
+                        confirmText={`Se conservará "${p.a.name}" y se eliminará "${p.b.name}" (sus tarifas y homologaciones pasan al que conservas). ¿Continuar?`}
+                        successMessage="Ítems fusionados."
+                      >
+                        Mantener &quot;{p.a.canonicalCode}&quot;
+                      </MutateButton>
+                      <MutateButton
+                        action={mergeCanonicalItems}
+                        fields={{ keepId: p.b.id, discardId: p.a.id }}
+                        variant="secondary"
+                        confirmText={`Se conservará "${p.b.name}" y se eliminará "${p.a.name}" (sus tarifas y homologaciones pasan al que conservas). ¿Continuar?`}
+                        successMessage="Ítems fusionados."
+                      >
+                        Mantener &quot;{p.b.canonicalCode}&quot;
+                      </MutateButton>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Card>
     </div>
   );
 }

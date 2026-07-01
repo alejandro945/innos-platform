@@ -144,3 +144,85 @@ export async function deleteCanonicalItem(
   revalidatePath("/catalogo");
   return { ok: true, message: "Ítem eliminado." };
 }
+
+/**
+ * Merge two canonical items flagged as likely duplicates: every rate, mapping
+ * and code that pointed at `discardId` is repointed to `keepId`, then the
+ * discarded item is deleted. Codes that would collide with one `keep` already
+ * has are simply dropped (their FK cascades away with the deleted item).
+ */
+export async function mergeCanonicalItems(
+  formData: FormData,
+): Promise<ActionResult> {
+  const session = await requireRoles("ADMIN");
+  const keepId = String(formData.get("keepId"));
+  const discardId = String(formData.get("discardId"));
+  if (!keepId || !discardId || keepId === discardId) {
+    return { ok: false, message: "Selección inválida." };
+  }
+
+  const [keep, discard] = await Promise.all([
+    prisma.canonicalItem.findFirst({
+      where: { id: keepId, organizationId: session.organizationId },
+      select: { id: true, name: true, canonicalCode: true },
+    }),
+    prisma.canonicalItem.findFirst({
+      where: { id: discardId, organizationId: session.organizationId },
+      select: { id: true, name: true, canonicalCode: true },
+    }),
+  ]);
+  if (!keep || !discard) return { ok: false, message: "Ítem no encontrado." };
+
+  await prisma.$transaction(async (tx) => {
+    await tx.rateCard.updateMany({
+      where: { canonicalItemId: discardId },
+      data: { canonicalItemId: keepId },
+    });
+    await tx.itemMapping.updateMany({
+      where: { canonicalItemId: discardId },
+      data: { canonicalItemId: keepId },
+    });
+
+    // Move codes that don't already exist on `keep`; the rest (and the
+    // embedding) cascade-delete with the discarded item below.
+    const discardCodes = await tx.canonicalCode.findMany({
+      where: { canonicalItemId: discardId },
+    });
+    for (const code of discardCodes) {
+      const clash = await tx.canonicalCode.findFirst({
+        where: { canonicalItemId: keepId, system: code.system, code: code.code },
+        select: { id: true },
+      });
+      if (!clash) {
+        await tx.canonicalCode.update({
+          where: { id: code.id },
+          data: { canonicalItemId: keepId },
+        });
+      }
+    }
+
+    await tx.canonicalItem.delete({ where: { id: discardId } });
+
+    await tx.auditLog.create({
+      data: {
+        organizationId: session.organizationId,
+        actorId: session.userId,
+        action: "catalog.merged",
+        entityType: "CanonicalItem",
+        entityId: keepId,
+        before: {
+          discardId: discard.id,
+          discardCode: discard.canonicalCode,
+          discardName: discard.name,
+        },
+      },
+    });
+  });
+
+  revalidatePath("/catalogo");
+  revalidatePath("/analisis");
+  return {
+    ok: true,
+    message: `"${discard.name}" se fusionó con "${keep.name}".`,
+  };
+}
