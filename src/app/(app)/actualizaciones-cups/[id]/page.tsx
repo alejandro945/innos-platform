@@ -48,6 +48,14 @@ export default async function RegulatoryUpdateDetailPage({
         <PageHeader
           title={update.sourceFileName}
           subtitle="Actualización de códigos CUPS"
+          action={
+            <Link
+              href="/actualizaciones-cups"
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              ← Ver todas
+            </Link>
+          }
         />
         <Card className="flex flex-col items-center justify-center gap-3 py-16 text-center">
           <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
@@ -69,6 +77,14 @@ export default async function RegulatoryUpdateDetailPage({
         <PageHeader
           title={update.sourceFileName}
           subtitle="Actualización de códigos CUPS"
+          action={
+            <Link
+              href="/actualizaciones-cups"
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              ← Ver todas
+            </Link>
+          }
         />
         <Card className="bg-rose-50">
           <p className="text-sm text-rose-900">
@@ -126,11 +142,19 @@ export default async function RegulatoryUpdateDetailPage({
             .join(" ") || update.sourceFileName
         }
         action={
-          <span
-            className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${REGULATORY_STATUS_STYLES[update.status]}`}
-          >
-            {REGULATORY_STATUS_LABELS[update.status]}
-          </span>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/actualizaciones-cups"
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              ← Ver todas
+            </Link>
+            <span
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${REGULATORY_STATUS_STYLES[update.status]}`}
+            >
+              {REGULATORY_STATUS_LABELS[update.status]}
+            </span>
+          </div>
         }
       />
 

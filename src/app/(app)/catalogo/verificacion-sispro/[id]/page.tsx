@@ -48,6 +48,14 @@ export default async function SisproVerificationPage({
         <PageHeader
           title="Verificación contra SISPRO"
           subtitle="Comparando los CUPS normativos de tu catálogo contra el consultor público de SISPRO."
+          action={
+            <Link
+              href="/catalogo/verificacion-sispro"
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              ← Ver todas las verificaciones
+            </Link>
+          }
         />
         <Card className="flex flex-col items-center justify-center gap-3 py-16 text-center">
           <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
@@ -64,7 +72,17 @@ export default async function SisproVerificationPage({
   if (verification.status === "FAILED") {
     return (
       <div>
-        <PageHeader title="Verificación contra SISPRO" />
+        <PageHeader
+          title="Verificación contra SISPRO"
+          action={
+            <Link
+              href="/catalogo/verificacion-sispro"
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              ← Ver todas las verificaciones
+            </Link>
+          }
+        />
         <Card className="bg-rose-50">
           <p className="text-sm text-rose-900">
             La verificación falló. La página pública de SISPRO pudo haber
@@ -95,6 +113,14 @@ export default async function SisproVerificationPage({
       <PageHeader
         title="Verificación contra SISPRO"
         subtitle={`Ejecutada el ${formatDate(verification.runAt)}`}
+        action={
+          <Link
+            href="/catalogo/verificacion-sispro"
+            className="text-sm text-slate-600 hover:text-slate-900"
+          >
+            ← Ver todas las verificaciones
+          </Link>
+        }
       />
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">

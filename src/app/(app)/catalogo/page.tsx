@@ -65,6 +65,12 @@ export default async function CatalogoPage({
         action={
           canManage ? (
             <div className="flex items-center gap-2">
+              <Link
+                href="/catalogo/verificacion-sispro"
+                className="text-sm text-slate-600 hover:text-slate-900 hover:underline"
+              >
+                Ver verificaciones anteriores
+              </Link>
               <form action={verifyCatalogAgainstSispro}>
                 <ActionButton variant="secondary">
                   <ShieldCheck className="h-4 w-4" /> Verificar contra SISPRO
