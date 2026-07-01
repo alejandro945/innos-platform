@@ -7,12 +7,30 @@ export type ComparisonOption = {
   value: number | null;
   inclusions: string | null;
   exclusions: string | null;
+  // Which internal catalog entry (CUPS propio) this provider's price was
+  // homologated to. Kept per-option because a line can fold together several
+  // internal items that share one normative code (see grouping note below).
+  internalCode: string;
+  internalName: string;
+};
+
+export type InternalCatalogRef = {
+  id: string;
+  canonicalCode: string;
+  name: string;
 };
 
 export type ComparisonLineData = {
-  canonicalItemId: string;
+  // Official regulatory code (CUPS SISPRO), when the canonical item has one.
+  normativeCode: string | null;
+  // Display code for the line: the normative code when grouped by it,
+  // otherwise the single internal (CUPS propio) code.
   canonicalCode: string;
   canonicalName: string;
+  // Distinct internal catalog entries folded into this line. Length > 1 means
+  // the org's own catalog has more than one entry for the same normative
+  // code — a candidate to merge permanently in Catálogo (ver /analisis).
+  internalItems: InternalCatalogRef[];
   minValue: number | null;
   maxValue: number | null;
   avgValue: number | null;
@@ -23,7 +41,14 @@ export type ComparisonLineData = {
 
 /**
  * Build and persist a comparison for a process: groups approved homologations
- * by canonical item and computes min/max/avg + best price + potential savings.
+ * and computes min/max/avg + best price + potential savings.
+ *
+ * Grouping is by normative CUPS code (the official/regulatory code) when the
+ * canonical item has one, not by the internal "CUPS propio" — two internal
+ * catalog entries that both map to the same normative code represent the same
+ * real-world service, so their provider prices belong in one comparison line
+ * even if the org's own catalog hasn't been merged yet. Items without a
+ * normative code fall back to grouping by their own internal item.
  */
 export async function generateComparison(
   processId: string,
@@ -43,19 +68,22 @@ export async function generateComparison(
     },
   });
 
-  // Group by canonical item.
   const groups = new Map<string, ComparisonLineData>();
+  const internalIdsSeen = new Map<string, Set<string>>();
+
   for (const it of items) {
     const ci = it.mapping?.canonicalItem;
     if (!ci) continue;
     const value = it.rawPrice ? Number(it.rawPrice) : null;
+    const groupKey = ci.normativeCode ? `norm:${ci.normativeCode}` : `own:${ci.id}`;
 
-    let line = groups.get(ci.id);
+    let line = groups.get(groupKey);
     if (!line) {
       line = {
-        canonicalItemId: ci.id,
-        canonicalCode: ci.canonicalCode,
+        normativeCode: ci.normativeCode,
+        canonicalCode: ci.normativeCode ?? ci.canonicalCode,
         canonicalName: ci.name,
+        internalItems: [],
         minValue: null,
         maxValue: null,
         avgValue: null,
@@ -63,14 +91,28 @@ export async function generateComparison(
         savings: null,
         options: [],
       };
-      groups.set(ci.id, line);
+      groups.set(groupKey, line);
+      internalIdsSeen.set(groupKey, new Set());
     }
+
+    const seen = internalIdsSeen.get(groupKey)!;
+    if (!seen.has(ci.id)) {
+      seen.add(ci.id);
+      line.internalItems.push({
+        id: ci.id,
+        canonicalCode: ci.canonicalCode,
+        name: ci.name,
+      });
+    }
+
     line.options.push({
       providerId: it.providerId,
       providerName: it.provider.name,
       value,
       inclusions: it.inclusions,
       exclusions: it.exclusions,
+      internalCode: ci.canonicalCode,
+      internalName: ci.name,
     });
   }
 
@@ -111,15 +153,20 @@ export async function generateComparison(
       await tx.comparisonLine.createMany({
         data: lines.map((l) => ({
           comparisonId: created.id,
-          canonicalItemId: l.canonicalItemId,
+          // Representative internal item — informational only (no FK), since a
+          // line can now fold in several internal entries (see `internalItems`
+          // in `options`).
+          canonicalItemId: l.internalItems[0].id,
           minValue: l.minValue,
           maxValue: l.maxValue,
           avgValue: l.avgValue,
           optionCount: l.options.length,
           bestProviderId: l.bestProviderId,
           options: {
+            normativeCode: l.normativeCode,
             canonicalCode: l.canonicalCode,
             canonicalName: l.canonicalName,
+            internalItems: l.internalItems,
             savings: l.savings,
             options: l.options,
           } as Prisma.InputJsonValue,
@@ -138,8 +185,10 @@ export async function generateComparison(
 
 /** Shape stored in ComparisonLine.options (denormalized for rendering/export). */
 export type StoredLineOptions = {
+  normativeCode: string | null;
   canonicalCode: string;
   canonicalName: string;
+  internalItems: InternalCatalogRef[];
   savings: number | null;
   options: ComparisonOption[];
 };
@@ -167,6 +216,7 @@ export type LoadedComparison = {
 
 function toLine(l: {
   id: string;
+  canonicalItemId: string;
   minValue: Prisma.Decimal | null;
   maxValue: Prisma.Decimal | null;
   avgValue: Prisma.Decimal | null;
@@ -174,6 +224,31 @@ function toLine(l: {
   optionCount: number;
   options: unknown;
 }): LoadedComparisonLine {
+  const raw = l.options as Partial<StoredLineOptions> & {
+    options?: (Partial<ComparisonOption> & { providerId: string })[];
+  };
+  // Comparisons generated before normative-code grouping was added don't have
+  // `normativeCode`/`internalItems`/per-option internal codes in their stored
+  // JSON — default them so old (unregenerated) comparisons still render.
+  const data: StoredLineOptions = {
+    normativeCode: raw.normativeCode ?? null,
+    canonicalCode: raw.canonicalCode ?? "",
+    canonicalName: raw.canonicalName ?? "",
+    internalItems: raw.internalItems ?? [
+      { id: l.canonicalItemId, canonicalCode: raw.canonicalCode ?? "", name: raw.canonicalName ?? "" },
+    ],
+    savings: raw.savings ?? null,
+    options: (raw.options ?? []).map((o) => ({
+      providerId: o.providerId,
+      providerName: o.providerName ?? "",
+      value: o.value ?? null,
+      inclusions: o.inclusions ?? null,
+      exclusions: o.exclusions ?? null,
+      internalCode: o.internalCode ?? raw.canonicalCode ?? "",
+      internalName: o.internalName ?? raw.canonicalName ?? "",
+    })),
+  };
+
   return {
     id: l.id,
     minValue: l.minValue?.toString() ?? null,
@@ -181,7 +256,7 @@ function toLine(l: {
     avgValue: l.avgValue?.toString() ?? null,
     bestProviderId: l.bestProviderId,
     optionCount: l.optionCount,
-    data: l.options as unknown as StoredLineOptions,
+    data,
   };
 }
 

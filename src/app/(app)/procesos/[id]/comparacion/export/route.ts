@@ -21,13 +21,17 @@ export async function GET(
     );
   }
 
-  // One row per provider option, flattened for analysis in Excel.
+  // One row per provider option, flattened for analysis in Excel. Comparison
+  // lines are grouped by normative CUPS, so "CUPS propio"/"Ítem" reflect the
+  // specific internal catalog entry that particular price was homologated to
+  // (it can differ row to row within the same normative-code group).
   const rows: Record<string, string | number>[] = [];
   for (const line of comparison.lines) {
     for (const opt of line.data.options) {
       rows.push({
-        "CUPS propio": line.data.canonicalCode,
-        Ítem: line.data.canonicalName,
+        "CUPS normativo": line.data.normativeCode ?? "",
+        "CUPS propio": opt.internalCode,
+        Ítem: opt.internalName,
         Proveedor: opt.providerName,
         Valor: opt.value ?? "",
         "Mejor precio": opt.providerId === line.bestProviderId ? "SÍ" : "",

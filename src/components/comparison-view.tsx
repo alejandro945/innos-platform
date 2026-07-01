@@ -41,19 +41,37 @@ export function ComparisonView({
 
   return (
     <div className="space-y-6">
-      {lines.map((line) => (
+      {lines.map((line) => {
+        const grouped = line.data.internalItems.length > 1;
+        return (
         <div
           key={line.id}
           className="overflow-hidden rounded-xl border border-slate-200"
         >
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3">
             <div>
+              {line.data.normativeCode && (
+                <span className="mr-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                  CUPS normativo
+                </span>
+              )}
               <span className="font-mono text-xs text-slate-500">
                 {line.data.canonicalCode}
               </span>
               <span className="ml-2 font-medium text-slate-900">
                 {line.data.canonicalName}
               </span>
+              {grouped && (
+                <div className="mt-1 text-xs text-amber-700">
+                  Agrupa {line.data.internalItems.length} ítems del catálogo
+                  propio ({line.data.internalItems.map((i) => i.canonicalCode).join(", ")}
+                  ) — considera fusionarlos en{" "}
+                  <a href="/analisis" className="underline">
+                    Catálogo
+                  </a>
+                  .
+                </div>
+              )}
             </div>
             <div className="flex flex-wrap gap-4 text-xs text-slate-600">
               <span>Mín: <strong>{formatCurrency(line.minValue)}</strong></span>
@@ -70,6 +88,9 @@ export function ComparisonView({
             <thead className="text-left text-xs uppercase text-slate-400">
               <tr>
                 <th className="px-4 py-2 font-medium">Proveedor</th>
+                {grouped && (
+                  <th className="px-4 py-2 font-medium">Ítem interno</th>
+                )}
                 <th className="px-4 py-2 font-medium">Valor</th>
                 <th className="px-4 py-2 font-medium">Inclusiones</th>
                 <th className="px-4 py-2 font-medium">Exclusiones</th>
@@ -92,6 +113,11 @@ export function ComparisonView({
                           </span>
                         )}
                       </td>
+                      {grouped && (
+                        <td className="px-4 py-2 font-mono text-xs text-slate-500">
+                          {opt.internalCode}
+                        </td>
+                      )}
                       <td className="px-4 py-2 font-medium text-slate-900">
                         {formatCurrency(opt.value)}
                       </td>
@@ -107,7 +133,8 @@ export function ComparisonView({
             </tbody>
           </table>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
