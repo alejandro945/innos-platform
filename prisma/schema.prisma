@@ -187,17 +187,25 @@ model RateCard {
   validFrom       DateTime
   validTo         DateTime?
   sourceUploadId  String?
+  // The procurement process whose upload produced this rate (set when
+  // promoted from a process; null for manually-entered rates). Kept as its
+  // own FK — not just derived via sourceUpload — so the link survives even if
+  // the upload is later deleted, and so the rate repository can be filtered
+  // or displayed by originating process without an extra join.
+  sourceProcessId String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  organization  Organization   @relation(fields: [organizationId], references: [id])
-  canonicalItem CanonicalItem  @relation(fields: [canonicalItemId], references: [id])
-  provider      Provider       @relation(fields: [providerId], references: [id])
-  sourceUpload  ProcessUpload? @relation(fields: [sourceUploadId], references: [id])
+  organization  Organization        @relation(fields: [organizationId], references: [id])
+  canonicalItem CanonicalItem       @relation(fields: [canonicalItemId], references: [id])
+  provider      Provider            @relation(fields: [providerId], references: [id])
+  sourceUpload  ProcessUpload?      @relation(fields: [sourceUploadId], references: [id])
+  sourceProcess ProcurementProcess? @relation(fields: [sourceProcessId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, canonicalItemId])
   @@index([providerId])
   @@index([validFrom, validTo])
+  @@index([sourceProcessId])
 }
 
 // ---------------------------------------------------------------------------
@@ -226,6 +234,7 @@ model ProcurementProcess {
   createdBy    User            @relation(fields: [createdById], references: [id])
   uploads      ProcessUpload[]
   comparisons  Comparison[]
+  rateCards    RateCard[]
 
   @@index([organizationId, status])
 }

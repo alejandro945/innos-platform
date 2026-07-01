@@ -397,6 +397,7 @@ export async function promoteUploadRates(formData: FormData) {
       validFrom,
       validTo,
       sourceUploadId: uploadId,
+      sourceProcessId: upload.processId,
     }));
 
   // Bulk-insert in chunks instead of one create() per row: a few hundred

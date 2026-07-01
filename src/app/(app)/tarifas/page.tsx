@@ -76,7 +76,11 @@ export default async function TarifasPage({
     prisma.rateCard.findMany({
       where,
       orderBy: [{ canonicalItem: { canonicalCode: "asc" } }, { value: "asc" }],
-      include: { canonicalItem: true, provider: true },
+      include: {
+        canonicalItem: true,
+        provider: true,
+        sourceProcess: { select: { id: true, name: true } },
+      },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
@@ -203,9 +207,19 @@ export default async function TarifasPage({
                         {r.provider.name}
                       </div>
                       <div className="text-xs text-slate-400">
-                        {r.sourceUploadId
-                          ? "Importado de proceso"
-                          : r.tariffSource || "Manual"}
+                        {r.sourceProcess ? (
+                          <>
+                            Proceso:{" "}
+                            <Link
+                              href={`/procesos/${r.sourceProcess.id}`}
+                              className="underline hover:text-slate-600"
+                            >
+                              {r.sourceProcess.name}
+                            </Link>
+                          </>
+                        ) : (
+                          r.tariffSource || "Manual"
+                        )}
                       </div>
                     </td>
                     <td className="px-5 py-3 font-medium text-slate-900">
