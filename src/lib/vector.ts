@@ -49,6 +49,7 @@ export async function searchSimilarItems(
       FROM "ItemEmbedding" e
       JOIN "CanonicalItem" ci ON ci.id = e."canonicalItemId"
       WHERE ci."organizationId" = ${organizationId}
+        AND ci."isActive" = true
         AND e.embedding IS NOT NULL
       ORDER BY e.embedding <=> ${literal}::vector
       LIMIT ${limit}

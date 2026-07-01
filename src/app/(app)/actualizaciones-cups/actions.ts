@@ -1,0 +1,301 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { after } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireRoles } from "@/lib/session";
+import { storeDocument } from "@/lib/blob";
+import { repointCanonicalItem } from "@/lib/canonical-merge";
+import { embedCanonicalItem } from "@/lib/embed-items";
+import { extractRegulatoryUpdateInline } from "@/lib/regulatory-extraction";
+import { runSisproVerificationInline } from "@/lib/sispro";
+import { formatDate } from "@/lib/format";
+import { inngest, EVENTS } from "@/inngest/client";
+import type { ActionResult } from "@/lib/action-result";
+
+export type ActionState = { error?: string; ok?: boolean };
+
+function appendNote(existing: string | null, note: string): string {
+  return existing ? `${existing}\n\n${note}` : note;
+}
+
+/** Upload a resolution PDF and kick off (durable or inline) extraction. */
+export async function uploadRegulatoryUpdate(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await requireRoles("ADMIN");
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "Seleccione un archivo PDF." };
+  }
+  const isPdf =
+    file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  if (!isPdf) return { error: "El archivo debe ser un PDF." };
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  const created = await prisma.regulatoryUpdate.create({
+    data: {
+      organizationId: session.organizationId,
+      sourceFileName: file.name,
+      createdById: session.userId,
+    },
+  });
+
+  try {
+    const blobUrl = await storeDocument(file.name, buffer, "resoluciones", created.id);
+    await prisma.regulatoryUpdate.update({
+      where: { id: created.id },
+      data: { sourceBlobUrl: blobUrl },
+    });
+  } catch (e) {
+    await prisma.regulatoryUpdate.update({
+      where: { id: created.id },
+      data: { status: "FAILED" },
+    });
+    return { error: `No se pudo guardar el archivo: ${(e as Error).message}` };
+  }
+
+  if (process.env.INNGEST_EVENT_KEY) {
+    await inngest.send({
+      name: EVENTS.extractRegulatoryUpdate,
+      data: { regulatoryUpdateId: created.id },
+    });
+  } else {
+    // No queue configured: run after the response is sent (dev / small PDFs).
+    after(async () => {
+      try {
+        await extractRegulatoryUpdateInline(created.id);
+      } catch (e) {
+        console.error("extractRegulatoryUpdateInline failed:", e);
+        await prisma.regulatoryUpdate.update({
+          where: { id: created.id },
+          data: { status: "FAILED" },
+        });
+      }
+    });
+  }
+
+  revalidatePath("/actualizaciones-cups");
+  redirect(`/actualizaciones-cups/${created.id}`);
+}
+
+/** Approve or reject one extracted change (before applying). */
+export async function setChangeStatus(formData: FormData): Promise<ActionResult> {
+  const session = await requireRoles("ADMIN");
+  const changeId = String(formData.get("changeId"));
+  const status = String(formData.get("status"));
+  if (status !== "APPROVED" && status !== "REJECTED" && status !== "PENDING") {
+    return { ok: false, message: "Estado inválido." };
+  }
+
+  const change = await prisma.cupsCodeChange.findFirst({
+    where: { id: changeId, regulatoryUpdate: { organizationId: session.organizationId } },
+    select: { id: true, regulatoryUpdateId: true },
+  });
+  if (!change) return { ok: false, message: "Cambio no encontrado." };
+
+  await prisma.cupsCodeChange.update({ where: { id: changeId }, data: { status } });
+  revalidatePath(`/actualizaciones-cups/${change.regulatoryUpdateId}`);
+  return {
+    ok: true,
+    message:
+      status === "APPROVED" ? "Aprobado." : status === "REJECTED" ? "Descartado." : "Revertido a pendiente.",
+  };
+}
+
+/**
+ * Apply every APPROVED change with a matched catalog item: creates a new
+ * CanonicalItem cloned from the matched one (same CUPS propio) with the
+ * updated normativeCode, deactivates the old one, and repoints its
+ * rates/mappings — or, if the resolution eliminates the code with no
+ * replacement, just deactivates the matched item. See
+ * src/lib/canonical-merge.ts for the repoint logic (shared with the manual
+ * catalog-duplicate merge in /analisis).
+ */
+export async function applyRegulatoryUpdate(formData: FormData): Promise<ActionResult> {
+  const session = await requireRoles("ADMIN");
+  const regulatoryUpdateId = String(formData.get("regulatoryUpdateId"));
+
+  const update = await prisma.regulatoryUpdate.findFirst({
+    where: { id: regulatoryUpdateId, organizationId: session.organizationId },
+    select: { id: true, resolutionNumber: true, resolutionDate: true },
+  });
+  if (!update) return { ok: false, message: "Actualización no encontrada." };
+
+  const approved = await prisma.cupsCodeChange.findMany({
+    where: { regulatoryUpdateId, status: "APPROVED", matchedItemId: { not: null } },
+    orderBy: { id: "asc" },
+  });
+  if (approved.length === 0) {
+    return { ok: false, message: "No hay cambios aprobados con ítem coincidente." };
+  }
+
+  const resolutionLabel = update.resolutionNumber
+    ? `la Resolución ${update.resolutionNumber}${update.resolutionDate ? ` del ${formatDate(update.resolutionDate)}` : ""}`
+    : "la resolución cargada";
+
+  const seenMatchedItems = new Set<string>();
+  const createdItemIds: string[] = [];
+  let appliedCount = 0;
+  let skippedSplit = 0;
+
+  for (const change of approved) {
+    const matchedItemId = change.matchedItemId!;
+
+    // A code that splits into several new ones would need the same matched
+    // item updated twice in one pass — only the first applies automatically;
+    // the rest stay APPROVED with a note for the admin to handle manually.
+    if (seenMatchedItems.has(matchedItemId)) {
+      await prisma.cupsCodeChange.update({
+        where: { id: change.id },
+        data: {
+          note: appendNote(
+            change.note,
+            "Omitido al aplicar: el ítem coincidente ya fue actualizado por otro cambio de esta misma resolución (posible división de código). Revisar y aplicar manualmente en Catálogo si corresponde.",
+          ),
+        },
+      });
+      skippedSplit++;
+      continue;
+    }
+    seenMatchedItems.add(matchedItemId);
+
+    const createdItemId = await prisma.$transaction(async (tx) => {
+      const oldItem = await tx.canonicalItem.findUnique({ where: { id: matchedItemId } });
+      if (!oldItem) return null;
+
+      let newItemId: string | null = null;
+
+      if (change.newCode) {
+        const archivedCode = `${oldItem.canonicalCode}__retirado__${oldItem.id.slice(-6)}`;
+        await tx.canonicalItem.update({
+          where: { id: oldItem.id },
+          data: {
+            canonicalCode: archivedCode,
+            isActive: false,
+            description: appendNote(
+              oldItem.description,
+              `Inactivado por ${resolutionLabel}. Reemplazado por CUPS normativo ${change.newCode} (mismo CUPS propio: ${oldItem.canonicalCode}).`,
+            ),
+          },
+        });
+
+        const newItem = await tx.canonicalItem.create({
+          data: {
+            organizationId: session.organizationId,
+            kind: oldItem.kind,
+            canonicalCode: oldItem.canonicalCode, // original code, now freed
+            normativeCode: change.newCode,
+            name: oldItem.name,
+            description: appendNote(
+              oldItem.description,
+              `Creado por ${resolutionLabel}. Actualiza CUPS normativo ${change.oldCode} → ${change.newCode} (mismo CUPS propio).`,
+            ),
+            includesFees: oldItem.includesFees,
+            includesSupplies: oldItem.includesSupplies,
+          },
+        });
+        newItemId = newItem.id;
+
+        await repointCanonicalItem(tx, { fromId: oldItem.id, toId: newItem.id });
+
+        await tx.cupsCodeChange.update({
+          where: { id: change.id },
+          data: { status: "APPLIED", createdItemId: newItem.id },
+        });
+      } else {
+        await tx.canonicalItem.update({
+          where: { id: oldItem.id },
+          data: {
+            isActive: false,
+            description: appendNote(
+              oldItem.description,
+              `Inactivado (CUPS normativo ${change.oldCode} eliminado) por ${resolutionLabel}, sin código de reemplazo.`,
+            ),
+          },
+        });
+        await tx.cupsCodeChange.update({
+          where: { id: change.id },
+          data: { status: "APPLIED" },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          organizationId: session.organizationId,
+          actorId: session.userId,
+          action: "catalog.cups_updated",
+          entityType: "CanonicalItem",
+          entityId: oldItem.id,
+          before: { oldCode: change.oldCode, canonicalCode: oldItem.canonicalCode },
+          after: { newCode: change.newCode, regulatoryUpdateId },
+        },
+      });
+
+      return newItemId;
+    });
+
+    appliedCount++;
+    if (createdItemId) createdItemIds.push(createdItemId);
+  }
+
+  // Generate embeddings outside the transaction (external AI call).
+  for (const id of createdItemIds) {
+    try {
+      await embedCanonicalItem(id);
+    } catch (e) {
+      console.warn("Embedding skipped for", id, (e as Error).message);
+    }
+  }
+
+  await prisma.regulatoryUpdate.update({
+    where: { id: regulatoryUpdateId },
+    data: { status: "APPLIED", appliedAt: new Date(), appliedById: session.userId },
+  });
+
+  revalidatePath(`/actualizaciones-cups/${regulatoryUpdateId}`);
+  revalidatePath("/catalogo");
+  revalidatePath("/analisis");
+
+  return {
+    ok: true,
+    message:
+      skippedSplit > 0
+        ? `Se aplicaron ${appliedCount} cambio(s). ${skippedSplit} se omitieron por afectar un ítem ya actualizado en esta resolución.`
+        : `Se aplicaron ${appliedCount} cambio(s).`,
+  };
+}
+
+/** Trigger a (durable or inline) SISPRO verification run for the org's catalog. */
+export async function verifyCatalogAgainstSispro() {
+  const session = await requireRoles("ADMIN");
+
+  const verification = await prisma.sisproVerification.create({
+    data: { organizationId: session.organizationId, runById: session.userId },
+  });
+
+  if (process.env.INNGEST_EVENT_KEY) {
+    await inngest.send({
+      name: EVENTS.verifySisproVerification,
+      data: { verificationId: verification.id },
+    });
+  } else {
+    after(async () => {
+      try {
+        await runSisproVerificationInline(verification.id);
+      } catch (e) {
+        console.error("runSisproVerificationInline failed:", e);
+        await prisma.sisproVerification.update({
+          where: { id: verification.id },
+          data: { status: "FAILED" },
+        });
+      }
+    });
+  }
+
+  revalidatePath("/catalogo");
+  redirect(`/catalogo/verificacion-sispro/${verification.id}`);
+}

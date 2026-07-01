@@ -1,23 +1,26 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, EmptyState } from "@/components/ui";
 import type { Prisma, ItemKind } from "@prisma/client";
-import { Trash2 } from "lucide-react";
+import { Trash2, ShieldCheck } from "lucide-react";
 import { Modal } from "@/components/modal";
 import { MutateButton } from "@/components/mutate-button";
+import { ActionButton } from "@/components/action-button";
 import { Pagination } from "@/components/pagination";
 import { TableFilters } from "@/components/table-filters";
 import { ITEM_KIND_LABELS, ITEM_KINDS } from "@/lib/constants";
 import { ItemForm } from "./item-form";
 import { deleteCanonicalItem } from "./actions";
+import { verifyCatalogAgainstSispro } from "../actualizaciones-cups/actions";
 
 const PAGE_SIZE = 20;
 
 export default async function CatalogoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string; tipo?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; tipo?: string; estado?: string }>;
 }) {
   const session = await requireSession();
   const canManage = hasAnyRole(session.roles, "ADMIN");
@@ -27,9 +30,11 @@ export default async function CatalogoPage({
   const tipo = ITEM_KINDS.includes(sp.tipo as ItemKind)
     ? (sp.tipo as ItemKind)
     : undefined;
+  const showAll = sp.estado === "todos";
 
   const where: Prisma.CanonicalItemWhereInput = {
     organizationId: session.organizationId,
+    ...(showAll ? {} : { isActive: true }),
     ...(tipo ? { kind: tipo } : {}),
     ...(q
       ? {
@@ -59,12 +64,41 @@ export default async function CatalogoPage({
         subtitle="Ítems estándar contra los que se homologan los servicios y productos de los proveedores."
         action={
           canManage ? (
-            <Modal triggerLabel="Nuevo ítem" title="Nuevo ítem canónico">
-              <ItemForm />
-            </Modal>
+            <div className="flex items-center gap-2">
+              <form action={verifyCatalogAgainstSispro}>
+                <ActionButton variant="secondary">
+                  <ShieldCheck className="h-4 w-4" /> Verificar contra SISPRO
+                </ActionButton>
+              </form>
+              <Modal triggerLabel="Nuevo ítem" title="Nuevo ítem canónico">
+                <ItemForm />
+              </Modal>
+            </div>
           ) : undefined
         }
       />
+      <div className="mb-4 flex gap-1 text-sm">
+        <Link
+          href="/catalogo"
+          className={
+            showAll
+              ? "rounded-lg border border-slate-200 px-3 py-2 text-slate-600 hover:bg-slate-100"
+              : "rounded-lg bg-slate-100 px-3 py-2 font-medium text-slate-900"
+          }
+        >
+          Activos
+        </Link>
+        <Link
+          href="/catalogo?estado=todos"
+          className={
+            showAll
+              ? "rounded-lg bg-slate-100 px-3 py-2 font-medium text-slate-900"
+              : "rounded-lg border border-slate-200 px-3 py-2 text-slate-600 hover:bg-slate-100"
+          }
+        >
+          Todos (incluye inactivos)
+        </Link>
+      </div>
 
       {total === 0 && !q && !tipo ? (
         <EmptyState
@@ -108,9 +142,17 @@ export default async function CatalogoPage({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {items.map((it) => (
-                  <tr key={it.id} className="hover:bg-slate-50">
+                  <tr
+                    key={it.id}
+                    className={it.isActive ? "hover:bg-slate-50" : "bg-slate-50/60 opacity-70 hover:opacity-100"}
+                  >
                     <td className="px-5 py-3 font-mono text-xs font-medium text-slate-900">
                       {it.canonicalCode}
+                      {!it.isActive && (
+                        <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                          Inactivo
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-slate-600">
                       {ITEM_KIND_LABELS[it.kind]}
@@ -174,7 +216,11 @@ export default async function CatalogoPage({
             page={page}
             pageSize={PAGE_SIZE}
             total={total}
-            params={{ ...(q ? { q } : {}), ...(tipo ? { tipo } : {}) }}
+            params={{
+              ...(q ? { q } : {}),
+              ...(tipo ? { tipo } : {}),
+              ...(showAll ? { estado: "todos" } : {}),
+            }}
           />
           </>
           )}

@@ -1,5 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { normalizeProviderItem, finalizeUpload } from "@/lib/normalize";
+import { extractPdfText, chunkText } from "@/lib/pdf-extract";
+import {
+  extractChangesFromChunk,
+  persistChunkResult,
+  finalizeRegulatoryExtraction,
+} from "@/lib/regulatory-extraction";
+import { verifyOneItem, finalizeSisproVerification } from "@/lib/sispro";
 import { inngest, EVENTS } from "./client";
 
 // Items processed per run before handing off to a fresh run. Items are
@@ -105,5 +112,163 @@ export const normalizeUploadFn = inngest.createFunction(
       data: { uploadId },
     });
     return { continued: true };
+  },
+);
+
+// Text chunks processed per run (each costs ~2 steps: extract + persist).
+// Chunks are re-derived from the source PDF each run (cheap, deterministic)
+// rather than carried across runs, so there's no large intermediate state to
+// pass through the continuation event.
+const CHUNK_BATCH_SIZE = Number(process.env.REGULATORY_CHUNK_BATCH_SIZE) || 60;
+
+/**
+ * Durable extraction workflow for a regulatory update PDF: fetches the stored
+ * PDF, splits it into text chunks, and asks the LLM to extract CUPS code
+ * changes from each chunk, persisting results (and resolution metadata) as it
+ * goes. Batches like `normalizeUploadFn` — a run processes up to
+ * CHUNK_BATCH_SIZE chunks, then hands off to a fresh run so large PDFs don't
+ * hit Inngest's 1000-step ceiling.
+ */
+export const extractRegulatoryUpdateFn = inngest.createFunction(
+  {
+    id: "extract-regulatory-update",
+    concurrency: { key: "event.data.regulatoryUpdateId", limit: 1 },
+    retries: 3,
+    triggers: [
+      { event: EVENTS.extractRegulatoryUpdate },
+      { event: EVENTS.continueExtractRegulatoryUpdate },
+    ],
+    cancelOn: [
+      { event: EVENTS.extractRegulatoryUpdate, match: "data.regulatoryUpdateId" },
+    ],
+  },
+  async ({ event, step }) => {
+    const { regulatoryUpdateId, startChunk = 0 } = event.data as {
+      regulatoryUpdateId: string;
+      startChunk?: number;
+    };
+
+    const chunks = await step.run("fetch-and-chunk", async () => {
+      const update = await prisma.regulatoryUpdate.findUnique({
+        where: { id: regulatoryUpdateId },
+        select: { sourceBlobUrl: true },
+      });
+      if (!update?.sourceBlobUrl) throw new Error("Falta el PDF de origen.");
+      const res = await fetch(update.sourceBlobUrl);
+      if (!res.ok) throw new Error(`No se pudo descargar el PDF (${res.status}).`);
+      const text = await extractPdfText(await res.arrayBuffer());
+      return chunkText(text);
+    });
+
+    if (chunks.length === 0) {
+      await step.run("mark-failed-empty", () =>
+        prisma.regulatoryUpdate.update({
+          where: { id: regulatoryUpdateId },
+          data: { status: "FAILED" },
+        }),
+      );
+      return { failed: true, reason: "empty-pdf" };
+    }
+
+    const endChunk = Math.min(startChunk + CHUNK_BATCH_SIZE, chunks.length);
+    for (let i = startChunk; i < endChunk; i++) {
+      const result = await step.run(`extract-chunk-${i}`, () =>
+        extractChangesFromChunk(chunks[i], i),
+      );
+      await step.run(`persist-chunk-${i}`, () =>
+        persistChunkResult(regulatoryUpdateId, result),
+      );
+    }
+
+    if (endChunk < chunks.length) {
+      await step.sendEvent("continue-extraction", {
+        name: EVENTS.continueExtractRegulatoryUpdate,
+        data: { regulatoryUpdateId, startChunk: endChunk },
+      });
+      return { continued: true, processed: endChunk };
+    }
+
+    await step.run("finalize", () => finalizeRegulatoryExtraction(regulatoryUpdateId));
+    return { done: true, totalChunks: chunks.length };
+  },
+);
+
+// SISPRO lookups per run, with a pause between each to be polite to a
+// government server (see lib/sispro.ts for the postback-simulation caveats).
+const SISPRO_BATCH_SIZE = Number(process.env.SISPRO_VERIFY_BATCH_SIZE) || 30;
+const SISPRO_REQUEST_DELAY_MS = Number(process.env.SISPRO_REQUEST_DELAY_MS) || 400;
+
+/**
+ * Durable verification workflow: checks every active canonical item with a
+ * normativeCode against the public SISPRO lookup, in small batches with a
+ * pause between requests. Batches/continues like the jobs above; a single
+ * item's lookup failing (network error, page format changed) doesn't abort
+ * the run — it's recorded as an ERROR result and the batch continues.
+ */
+export const verifySisproFn = inngest.createFunction(
+  {
+    id: "verify-sispro",
+    concurrency: { key: "event.data.verificationId", limit: 1 },
+    retries: 2,
+    triggers: [
+      { event: EVENTS.verifySisproVerification },
+      { event: EVENTS.continueSisproVerification },
+    ],
+    cancelOn: [
+      { event: EVENTS.verifySisproVerification, match: "data.verificationId" },
+    ],
+  },
+  async ({ event, step }) => {
+    const { verificationId, startIndex = 0 } = event.data as {
+      verificationId: string;
+      startIndex?: number;
+    };
+
+    const items = await step.run("load-items", async () => {
+      const verification = await prisma.sisproVerification.findUnique({
+        where: { id: verificationId },
+        select: { organizationId: true },
+      });
+      if (!verification) return [];
+      return prisma.canonicalItem.findMany({
+        where: {
+          organizationId: verification.organizationId,
+          isActive: true,
+          normativeCode: { not: null },
+        },
+        select: { id: true, name: true, normativeCode: true },
+        orderBy: { canonicalCode: "asc" },
+      });
+    });
+
+    if (items.length === 0) {
+      await step.run("finalize-empty", () =>
+        finalizeSisproVerification(verificationId, 0),
+      );
+      return { done: true, scanned: 0 };
+    }
+
+    const endIndex = Math.min(startIndex + SISPRO_BATCH_SIZE, items.length);
+    for (let i = startIndex; i < endIndex; i++) {
+      await step.run(`verify-${items[i].id}`, () =>
+        verifyOneItem(verificationId, items[i]),
+      );
+      if (i < endIndex - 1) {
+        await step.sleep(`pause-${items[i].id}`, SISPRO_REQUEST_DELAY_MS);
+      }
+    }
+
+    if (endIndex < items.length) {
+      await step.sendEvent("continue-verification", {
+        name: EVENTS.continueSisproVerification,
+        data: { verificationId, startIndex: endIndex },
+      });
+      return { continued: true, processed: endIndex };
+    }
+
+    await step.run("finalize", () =>
+      finalizeSisproVerification(verificationId, items.length),
+    );
+    return { done: true, scanned: items.length };
   },
 );

@@ -11,16 +11,21 @@ import { useRouter } from "next/navigation";
  */
 export function AutoRefresh({
   processId,
+  endpoint,
   pollMs = 6000,
   refreshThrottleMs = 15000,
 }: {
-  processId: string;
+  /** Legacy shorthand: polls /api/procesos/[processId]/progress. */
+  processId?: string;
+  /** Explicit progress endpoint (used by non-process background jobs). */
+  endpoint?: string;
   pollMs?: number;
   refreshThrottleMs?: number;
 }) {
   const router = useRouter();
   const lastSignature = useRef<string | null>(null);
   const lastRefresh = useRef<number>(0);
+  const url = endpoint ?? `/api/procesos/${processId}/progress`;
 
   useEffect(() => {
     let cancelled = false;
@@ -34,9 +39,7 @@ export function AutoRefresh({
         return;
       }
       try {
-        const res = await fetch(`/api/procesos/${processId}/progress`, {
-          cache: "no-store",
-        });
+        const res = await fetch(url, { cache: "no-store" });
         if (res.ok) {
           const data = (await res.json()) as {
             active: boolean;
@@ -69,7 +72,7 @@ export function AutoRefresh({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [processId, pollMs, refreshThrottleMs, router]);
+  }, [url, pollMs, refreshThrottleMs, router]);
 
   return null;
 }

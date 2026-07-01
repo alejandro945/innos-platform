@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRoles } from "@/lib/session";
 import { embedCanonicalItem } from "@/lib/embed-items";
+import { repointCanonicalItem } from "@/lib/canonical-merge";
 import type { ActionResult } from "@/lib/action-result";
 
 const itemSchema = z.object({
@@ -174,32 +175,9 @@ export async function mergeCanonicalItems(
   if (!keep || !discard) return { ok: false, message: "Ítem no encontrado." };
 
   await prisma.$transaction(async (tx) => {
-    await tx.rateCard.updateMany({
-      where: { canonicalItemId: discardId },
-      data: { canonicalItemId: keepId },
-    });
-    await tx.itemMapping.updateMany({
-      where: { canonicalItemId: discardId },
-      data: { canonicalItemId: keepId },
-    });
-
-    // Move codes that don't already exist on `keep`; the rest (and the
-    // embedding) cascade-delete with the discarded item below.
-    const discardCodes = await tx.canonicalCode.findMany({
-      where: { canonicalItemId: discardId },
-    });
-    for (const code of discardCodes) {
-      const clash = await tx.canonicalCode.findFirst({
-        where: { canonicalItemId: keepId, system: code.system, code: code.code },
-        select: { id: true },
-      });
-      if (!clash) {
-        await tx.canonicalCode.update({
-          where: { id: code.id },
-          data: { canonicalItemId: keepId },
-        });
-      }
-    }
+    // Codes that don't move (would collide on `keep`) cascade-delete with the
+    // discarded item below, along with its embedding.
+    await repointCanonicalItem(tx, { fromId: discardId, toId: keepId });
 
     await tx.canonicalItem.delete({ where: { id: discardId } });
 

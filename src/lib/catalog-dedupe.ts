@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { normalizeText } from "@/lib/embeddings";
+import { lexicalScore } from "@/lib/text-similarity";
 
 export type DuplicateItem = {
   id: string;
@@ -22,16 +22,6 @@ const VECTOR_MIN_SCORE = 0.85; // 1 - cosine distance
 const LEXICAL_MIN_SCORE = 0.6; // token Jaccard on the name
 const LEXICAL_ITEM_CAP = 800; // guard the O(n^2) in-memory fallback
 const MAX_PAIRS = 25;
-
-/** Token Jaccard similarity (mirrors lib/retrieval.ts's lexical fallback). */
-function lexicalScore(a: string, b: string): number {
-  const ta = new Set(normalizeText(a).split(" ").filter(Boolean));
-  const tb = new Set(normalizeText(b).split(" ").filter(Boolean));
-  if (ta.size === 0 || tb.size === 0) return 0;
-  let inter = 0;
-  for (const t of ta) if (tb.has(t)) inter++;
-  return inter / (ta.size + tb.size - inter);
-}
 
 function pairKey(a: string, b: string): string {
   return a < b ? `${a}:${b}` : `${b}:${a}`;
@@ -74,6 +64,8 @@ async function findVectorDuplicatePairs(
       JOIN "CanonicalItem" ci2 ON ci2.id = e2."canonicalItemId"
       WHERE ci1."organizationId" = ${organizationId}
         AND ci2."organizationId" = ${organizationId}
+        AND ci1."isActive" = true
+        AND ci2."isActive" = true
         AND ci1.kind = ci2.kind
         AND (e1.embedding <=> e2.embedding) <= ${1 - VECTOR_MIN_SCORE}
       ORDER BY distance ASC
@@ -109,7 +101,7 @@ async function findLexicalDuplicatePairs(
   organizationId: string,
 ): Promise<CatalogDuplicatePair[]> {
   const items = await prisma.canonicalItem.findMany({
-    where: { organizationId },
+    where: { organizationId, isActive: true },
     select: {
       id: true,
       canonicalCode: true,
@@ -165,7 +157,7 @@ export async function findCatalogDuplicates(organizationId: string): Promise<{
   lexicalScanSkipped: boolean;
 }> {
   const scannedItems = await prisma.canonicalItem.count({
-    where: { organizationId },
+    where: { organizationId, isActive: true },
   });
 
   const vectorPairs = await findVectorDuplicatePairs(organizationId);

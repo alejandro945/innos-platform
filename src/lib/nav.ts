@@ -4,6 +4,7 @@ import {
   Table2,
   Building2,
   BookMarked,
+  ScrollText,
   BarChart3,
   Sparkles,
   Settings,
@@ -48,6 +49,12 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/catalogo",
     icon: BookMarked,
     description: "Ítems y códigos estándar",
+  },
+  {
+    label: "Actualizaciones CUPS",
+    href: "/actualizaciones-cups",
+    icon: ScrollText,
+    description: "Resoluciones del Ministerio de Salud",
   },
   {
     label: "Análisis",

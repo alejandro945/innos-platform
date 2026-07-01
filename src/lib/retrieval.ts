@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { getEmbedding, normalizeText } from "@/lib/embeddings";
+import { getEmbedding } from "@/lib/embeddings";
 import { searchSimilarItems } from "@/lib/vector";
+import { lexicalScore } from "@/lib/text-similarity";
 
 export type Candidate = {
   id: string;
@@ -23,6 +24,7 @@ export async function findByCode(
   const byCanonical = await prisma.canonicalItem.findFirst({
     where: {
       organizationId,
+      isActive: true,
       OR: [{ canonicalCode: code }, { normativeCode: code }],
     },
     select: { id: true },
@@ -30,7 +32,7 @@ export async function findByCode(
   if (byCanonical) return byCanonical.id;
 
   const byCodeTable = await prisma.canonicalCode.findFirst({
-    where: { code, canonicalItem: { organizationId } },
+    where: { code, canonicalItem: { organizationId, isActive: true } },
     select: { canonicalItemId: true },
   });
   return byCodeTable?.canonicalItemId ?? null;
@@ -44,6 +46,7 @@ export async function findPriorMapping(
   const prior = await prisma.itemMapping.findFirst({
     where: {
       canonicalItemId: { not: null },
+      canonicalItem: { isActive: true },
       status: { in: ["APPROVED", "AUTO_APPROVED"] },
       providerItem: {
         providerId,
@@ -54,16 +57,6 @@ export async function findPriorMapping(
     select: { canonicalItemId: true },
   });
   return prior?.canonicalItemId ?? null;
-}
-
-/** Token Jaccard similarity for the lexical fallback. */
-function lexicalScore(a: string, b: string): number {
-  const ta = new Set(normalizeText(a).split(" ").filter(Boolean));
-  const tb = new Set(normalizeText(b).split(" ").filter(Boolean));
-  if (ta.size === 0 || tb.size === 0) return 0;
-  let inter = 0;
-  for (const t of ta) if (tb.has(t)) inter++;
-  return inter / (ta.size + tb.size - inter);
 }
 
 export type RetrievalMethod = "vector" | "lexical" | "none";
@@ -102,7 +95,7 @@ export async function retrieveCandidates(
 
   // Lexical fallback.
   const items = await prisma.canonicalItem.findMany({
-    where: { organizationId },
+    where: { organizationId, isActive: true },
     select: {
       id: true,
       canonicalCode: true,

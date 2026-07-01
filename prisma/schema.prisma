@@ -31,6 +31,8 @@ model Organization {
   rateCards            RateCard[]
   procurementProcesses ProcurementProcess[]
   auditLogs            AuditLog[]
+  regulatoryUpdates    RegulatoryUpdate[]
+  sisproVerifications  SisproVerification[]
 }
 
 enum UserStatus {
@@ -62,6 +64,8 @@ model User {
   reviews      ItemMapping[] @relation("MappingReviewer")
   uploads      ProcessUpload[]
   processes    ProcurementProcess[]
+  regulatoryUpdatesCreated RegulatoryUpdate[]
+  sisproVerificationsRun   SisproVerification[]
 
   @@index([organizationId])
 }
@@ -127,6 +131,7 @@ model CanonicalItem {
   includesFees    Boolean  @default(false)
   includesSupplies Boolean @default(false)
   isApproved      Boolean  @default(true) // false = AI-proposed, pending admin approval
+  isActive        Boolean  @default(true) // false = retired (superseded/eliminated by a regulatory update)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -135,6 +140,9 @@ model CanonicalItem {
   rateCards    RateCard[]
   mappings     ItemMapping[]
   embedding    ItemEmbedding?
+  cupsChangesMatched CupsCodeChange[] @relation("CupsChangeMatched")
+  cupsChangesCreated CupsCodeChange[] @relation("CupsChangeCreated")
+  sisproResults      SisproVerificationResult[]
 
   @@unique([organizationId, canonicalCode])
   @@index([organizationId, kind])
@@ -385,4 +393,110 @@ model AuditLog {
 
   @@index([organizationId, entityType, entityId])
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Regulatory updates (CUPS code changes from Ministerio de Salud resolutions)
+// ---------------------------------------------------------------------------
+
+enum RegulatoryUpdateStatus {
+  EXTRACTING
+  REVIEW
+  APPLIED
+  FAILED
+}
+
+model RegulatoryUpdate {
+  id               String    @id @default(cuid())
+  organizationId   String
+  resolutionNumber String?
+  resolutionDate   DateTime?
+  title            String?
+  sourceFileName   String
+  sourceBlobUrl    String?
+  status           RegulatoryUpdateStatus @default(EXTRACTING)
+  extractedAt      DateTime?
+  appliedAt        DateTime?
+  appliedById      String?
+  createdById      String
+  createdAt        DateTime  @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  createdBy    User             @relation(fields: [createdById], references: [id])
+  changes      CupsCodeChange[]
+
+  @@index([organizationId, status])
+}
+
+enum CupsChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  APPLIED
+}
+
+model CupsCodeChange {
+  id                 String   @id @default(cuid())
+  regulatoryUpdateId String
+  oldCode            String
+  newCode            String? // null = code eliminated, no replacement
+  oldDescription     String?
+  newDescription     String?
+  note               String?
+  status             CupsChangeStatus @default(PENDING)
+  matchedItemId      String? // CanonicalItem in this org whose normativeCode = oldCode
+  createdItemId      String? // new CanonicalItem created when applied (clone of matchedItem)
+
+  regulatoryUpdate RegulatoryUpdate @relation(fields: [regulatoryUpdateId], references: [id], onDelete: Cascade)
+  matchedItem      CanonicalItem?   @relation("CupsChangeMatched", fields: [matchedItemId], references: [id])
+  createdItem      CanonicalItem?   @relation("CupsChangeCreated", fields: [createdItemId], references: [id])
+
+  @@index([regulatoryUpdateId])
+}
+
+// ---------------------------------------------------------------------------
+// SISPRO verification (best-effort check of loaded CUPS against the public
+// SISPRO lookup — see src/lib/sispro.ts for caveats)
+// ---------------------------------------------------------------------------
+
+enum SisproVerificationStatus {
+  RUNNING
+  DONE
+  FAILED
+}
+
+model SisproVerification {
+  id             String   @id @default(cuid())
+  organizationId String
+  status         SisproVerificationStatus @default(RUNNING)
+  runAt          DateTime @default(now())
+  runById        String
+  scannedCount   Int      @default(0)
+
+  organization Organization               @relation(fields: [organizationId], references: [id])
+  runBy        User                       @relation(fields: [runById], references: [id])
+  results      SisproVerificationResult[]
+
+  @@index([organizationId])
+}
+
+enum SisproMatchStatus {
+  MISMATCH
+  NOT_FOUND
+  ERROR
+}
+
+model SisproVerificationResult {
+  id              String   @id @default(cuid())
+  verificationId  String
+  canonicalItemId String
+  normativeCode   String
+  status          SisproMatchStatus // matches aren't stored, only exceptions
+  sisproName      String?
+  note            String?
+
+  verification  SisproVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+  canonicalItem CanonicalItem      @relation(fields: [canonicalItemId], references: [id], onDelete: Cascade)
+
+  @@index([verificationId])
 }
