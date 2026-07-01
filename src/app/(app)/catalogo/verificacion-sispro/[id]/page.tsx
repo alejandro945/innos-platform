@@ -39,9 +39,19 @@ export default async function SisproVerificationPage({
   if (!verification) notFound();
 
   if (verification.status === "RUNNING") {
-    const scanned = await prisma.sisproVerificationResult.count({
-      where: { verificationId: id },
-    });
+    const [warnings, total] = await Promise.all([
+      prisma.sisproVerificationResult.count({ where: { verificationId: id } }),
+      prisma.canonicalItem.count({
+        where: {
+          organizationId: session.organizationId,
+          isActive: true,
+          normativeCode: { not: null },
+        },
+      }),
+    ]);
+    const scanned = verification.scannedCount;
+    const pct = total > 0 ? Math.min(100, Math.round((scanned / total) * 100)) : 0;
+
     return (
       <div>
         <AutoRefresh endpoint={`/api/catalogo/verificacion-sispro/${id}/progress`} />
@@ -57,12 +67,27 @@ export default async function SisproVerificationPage({
             </Link>
           }
         />
-        <Card className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+        <Card className="flex flex-col items-center justify-center gap-4 py-16 text-center">
           <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
           <p className="text-sm font-medium text-slate-700">Verificando…</p>
+          <div className="w-full max-w-sm">
+            <div className="mb-1 flex justify-between text-xs text-slate-500">
+              <span>
+                {scanned} de {total} ítems
+              </span>
+              <span>{pct}%</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-blue-600 transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
           <p className="text-sm text-slate-500">
-            {scanned} advertencia(s) encontradas hasta ahora. Esto corre
-            despacio a propósito para no saturar el servidor de SISPRO.
+            {warnings} advertencia(s) encontradas hasta ahora. Esto corre
+            despacio a propósito para no saturar el servidor de SISPRO — se
+            actualiza solo cada varios segundos.
           </p>
         </Card>
       </div>

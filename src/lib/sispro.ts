@@ -89,12 +89,20 @@ async function lookupCups(code: string): Promise<SisproLookup> {
  * Verify one canonical item's normativeCode against SISPRO and persist a
  * result row — but only for exceptions (MISMATCH/NOT_FOUND/ERROR); a clean
  * match isn't stored, keeping the results table to just what needs review.
+ *
+ * Bumps `scannedCount` on every call (match or not) so the verification's
+ * progress is visible while it's still RUNNING, not just once it finishes.
  */
 export async function verifyOneItem(
   verificationId: string,
   item: { id: string; name: string; normativeCode: string | null },
 ): Promise<void> {
   if (!item.normativeCode) return;
+
+  await prisma.sisproVerification.update({
+    where: { id: verificationId },
+    data: { scannedCount: { increment: 1 } },
+  });
 
   try {
     const result = await lookupCups(item.normativeCode);
