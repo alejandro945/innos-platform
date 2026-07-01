@@ -22,6 +22,15 @@ const STATUS_STYLES = {
   ERROR: "bg-slate-200 text-slate-600",
 } as const;
 
+const backLink = (
+  <Link
+    href="/catalogo/verificacion-sispro"
+    className="text-sm text-slate-600 hover:text-slate-900"
+  >
+    ← Ver todas las verificaciones
+  </Link>
+);
+
 export default async function SisproVerificationPage({
   params,
   searchParams,
@@ -38,76 +47,10 @@ export default async function SisproVerificationPage({
   });
   if (!verification) notFound();
 
-  if (verification.status === "RUNNING") {
-    const [warnings, total] = await Promise.all([
-      prisma.sisproVerificationResult.count({ where: { verificationId: id } }),
-      prisma.canonicalItem.count({
-        where: {
-          organizationId: session.organizationId,
-          isActive: true,
-          normativeCode: { not: null },
-        },
-      }),
-    ]);
-    const scanned = verification.scannedCount;
-    const pct = total > 0 ? Math.min(100, Math.round((scanned / total) * 100)) : 0;
-
-    return (
-      <div>
-        <AutoRefresh endpoint={`/api/catalogo/verificacion-sispro/${id}/progress`} />
-        <PageHeader
-          title="Verificación contra SISPRO"
-          subtitle="Comparando los CUPS normativos de tu catálogo contra el consultor público de SISPRO."
-          action={
-            <Link
-              href="/catalogo/verificacion-sispro"
-              className="text-sm text-slate-600 hover:text-slate-900"
-            >
-              ← Ver todas las verificaciones
-            </Link>
-          }
-        />
-        <Card className="flex flex-col items-center justify-center gap-4 py-16 text-center">
-          <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
-          <p className="text-sm font-medium text-slate-700">Verificando…</p>
-          <div className="w-full max-w-sm">
-            <div className="mb-1 flex justify-between text-xs text-slate-500">
-              <span>
-                {scanned} de {total} ítems
-              </span>
-              <span>{pct}%</span>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-              <div
-                className="h-full rounded-full bg-blue-600 transition-all"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          </div>
-          <p className="text-sm text-slate-500">
-            {warnings} advertencia(s) encontradas hasta ahora. Esto corre
-            despacio a propósito para no saturar el servidor de SISPRO — se
-            actualiza solo cada varios segundos.
-          </p>
-        </Card>
-      </div>
-    );
-  }
-
   if (verification.status === "FAILED") {
     return (
       <div>
-        <PageHeader
-          title="Verificación contra SISPRO"
-          action={
-            <Link
-              href="/catalogo/verificacion-sispro"
-              className="text-sm text-slate-600 hover:text-slate-900"
-            >
-              ← Ver todas las verificaciones
-            </Link>
-          }
-        />
+        <PageHeader title="Verificación contra SISPRO" action={backLink} />
         <Card className="bg-rose-50">
           <p className="text-sm text-rose-900">
             La verificación falló. La página pública de SISPRO pudo haber
@@ -122,7 +65,9 @@ export default async function SisproVerificationPage({
     );
   }
 
-  const [results, total] = await Promise.all([
+  const isRunning = verification.status === "RUNNING";
+
+  const [results, total, totalItems] = await Promise.all([
     prisma.sisproVerificationResult.findMany({
       where: { verificationId: id },
       include: { canonicalItem: { select: { canonicalCode: true, name: true } } },
@@ -131,25 +76,65 @@ export default async function SisproVerificationPage({
       take: PAGE_SIZE,
     }),
     prisma.sisproVerificationResult.count({ where: { verificationId: id } }),
+    isRunning
+      ? prisma.canonicalItem.count({
+          where: {
+            organizationId: session.organizationId,
+            isActive: true,
+            normativeCode: { not: null },
+          },
+        })
+      : Promise.resolve(0),
   ]);
+
+  const scanned = verification.scannedCount;
+  const pct =
+    isRunning && totalItems > 0 ? Math.min(100, Math.round((scanned / totalItems) * 100)) : 0;
 
   return (
     <div>
+      {isRunning && (
+        <AutoRefresh endpoint={`/api/catalogo/verificacion-sispro/${id}/progress`} />
+      )}
       <PageHeader
         title="Verificación contra SISPRO"
-        subtitle={`Ejecutada el ${formatDate(verification.runAt)}`}
-        action={
-          <Link
-            href="/catalogo/verificacion-sispro"
-            className="text-sm text-slate-600 hover:text-slate-900"
-          >
-            ← Ver todas las verificaciones
-          </Link>
+        subtitle={
+          isRunning
+            ? "Comparando los CUPS normativos de tu catálogo contra el consultor público de SISPRO."
+            : `Ejecutada el ${formatDate(verification.runAt)}`
         }
+        action={backLink}
       />
 
+      {isRunning && (
+        <Card className="mb-6">
+          <div className="flex items-center gap-3">
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-blue-600" />
+            <div className="w-full">
+              <div className="mb-1 flex justify-between text-xs text-slate-500">
+                <span>
+                  {scanned} de {totalItems} ítems verificados
+                </span>
+                <span>{pct}%</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-blue-600 transition-all"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-slate-400">
+            Corre despacio a propósito para no saturar el servidor de SISPRO —
+            esta página se actualiza sola cada varios segundos. Las
+            advertencias ya encontradas se listan abajo a medida que aparecen.
+          </p>
+        </Card>
+      )}
+
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <StatCard label="Ítems verificados" value={String(verification.scannedCount)} />
+        <StatCard label="Ítems verificados" value={String(scanned)} />
         <StatCard
           label="Con advertencia"
           value={String(total)}
@@ -158,9 +143,11 @@ export default async function SisproVerificationPage({
       </div>
 
       {total === 0 ? (
-        <Card className="bg-emerald-50">
-          <p className="text-sm text-emerald-900">
-            Todos los CUPS normativos verificados coinciden con SISPRO.
+        <Card className={isRunning ? undefined : "bg-emerald-50"}>
+          <p className={isRunning ? "text-sm text-slate-500" : "text-sm text-emerald-900"}>
+            {isRunning
+              ? "Sin advertencias por ahora."
+              : "Todos los CUPS normativos verificados coinciden con SISPRO."}
           </p>
         </Card>
       ) : (
