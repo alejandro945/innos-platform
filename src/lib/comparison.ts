@@ -159,41 +159,106 @@ export type LoadedComparison = {
   generatedAt: Date;
   processName: string;
   totalSavings: number;
+  totalItems: number;
+  page: number;
+  pageSize: number | null;
   lines: LoadedComparisonLine[];
 };
 
-/** Load the most recent comparison for a process (scoped to the org). */
+function toLine(l: {
+  id: string;
+  minValue: Prisma.Decimal | null;
+  maxValue: Prisma.Decimal | null;
+  avgValue: Prisma.Decimal | null;
+  bestProviderId: string | null;
+  optionCount: number;
+  options: unknown;
+}): LoadedComparisonLine {
+  return {
+    id: l.id,
+    minValue: l.minValue?.toString() ?? null,
+    maxValue: l.maxValue?.toString() ?? null,
+    avgValue: l.avgValue?.toString() ?? null,
+    bestProviderId: l.bestProviderId,
+    optionCount: l.optionCount,
+    data: l.options as unknown as StoredLineOptions,
+  };
+}
+
+/**
+ * Load the most recent comparison for a process (scoped to the org).
+ *
+ * Without `pagination`, returns every line (used by the Excel export and the
+ * printable report, which need the full dataset). With `pagination`, returns
+ * only that page's lines so the UI never renders thousands of rows at once —
+ * ordering by canonical code is resolved with a lightweight id+code pass
+ * first, so only the requested page pays for the full (heavier) option JSON.
+ */
 export async function getLatestComparison(
   processId: string,
   organizationId: string,
+  pagination?: { page: number; pageSize: number },
 ): Promise<LoadedComparison | null> {
   const comparison = await prisma.comparison.findFirst({
     where: { processId, process: { organizationId } },
     orderBy: { generatedAt: "desc" },
-    include: {
-      process: { select: { name: true } },
-      lines: true,
-    },
+    select: { id: true, generatedAt: true, summary: true, process: { select: { name: true } } },
   });
   if (!comparison) return null;
 
-  const summary = (comparison.summary ?? {}) as { totalSavings?: number };
+  const summary = (comparison.summary ?? {}) as {
+    totalSavings?: number;
+    itemCount?: number;
+  };
+
+  if (!pagination) {
+    const lines = await prisma.comparisonLine.findMany({
+      where: { comparisonId: comparison.id },
+    });
+    return {
+      id: comparison.id,
+      generatedAt: comparison.generatedAt,
+      processName: comparison.process.name,
+      totalSavings: summary.totalSavings ?? 0,
+      totalItems: lines.length,
+      page: 1,
+      pageSize: null,
+      lines: lines
+        .map(toLine)
+        .sort((a, b) => a.data.canonicalCode.localeCompare(b.data.canonicalCode)),
+    };
+  }
+
+  const { page, pageSize } = pagination;
+
+  // Lightweight pass: order is stored inside the JSON `options` column, so we
+  // fetch just id + canonicalCode for every line to compute the sorted page
+  // window, without paying to deserialize the full option list for all rows.
+  const index = await prisma.comparisonLine.findMany({
+    where: { comparisonId: comparison.id },
+    select: { id: true, options: true },
+  });
+  const sorted = index
+    .map((l) => ({ id: l.id, code: (l.options as { canonicalCode?: string }).canonicalCode ?? "" }))
+    .sort((a, b) => a.code.localeCompare(b.code));
+
+  const start = (page - 1) * pageSize;
+  const pageIds = sorted.slice(start, start + pageSize).map((l) => l.id);
+  const pageOrder = new Map(pageIds.map((id, i) => [id, i]));
+
+  const lines = pageIds.length
+    ? await prisma.comparisonLine.findMany({ where: { id: { in: pageIds } } })
+    : [];
+  lines.sort((a, b) => (pageOrder.get(a.id) ?? 0) - (pageOrder.get(b.id) ?? 0));
 
   return {
     id: comparison.id,
     generatedAt: comparison.generatedAt,
     processName: comparison.process.name,
     totalSavings: summary.totalSavings ?? 0,
-    lines: comparison.lines
-      .map((l) => ({
-        id: l.id,
-        minValue: l.minValue?.toString() ?? null,
-        maxValue: l.maxValue?.toString() ?? null,
-        avgValue: l.avgValue?.toString() ?? null,
-        bestProviderId: l.bestProviderId,
-        optionCount: l.optionCount,
-        data: l.options as unknown as StoredLineOptions,
-      }))
-      .sort((a, b) => a.data.canonicalCode.localeCompare(b.data.canonicalCode)),
+    totalItems: sorted.length,
+    page,
+    pageSize,
+    lines: lines.map(toLine),
   };
 }

@@ -14,6 +14,7 @@ import { requireSession } from "@/lib/session";
 import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, StatCard } from "@/components/ui";
 import { ComparisonView } from "@/components/comparison-view";
+import { Pagination } from "@/components/pagination";
 import { getLatestComparison } from "@/lib/comparison";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
@@ -37,17 +38,22 @@ import {
   deleteUpload,
 } from "../actions";
 
+// Each line renders as its own sub-table of provider options, so keep this
+// well under the flat-table page sizes used elsewhere (e.g. /tarifas).
+const COMPARISON_PAGE_SIZE = 20;
+
 export default async function ProcessDetailPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; dedupe?: string }>;
+  searchParams: Promise<{ tab?: string; dedupe?: string; page?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
   const tab = sp.tab === "comparacion" ? "comparacion" : "archivos";
   const dedupe = sp.dedupe === "1";
+  const comparisonPage = Math.max(1, Number(sp.page) || 1);
   const session = await requireSession();
   const canManage = hasAnyRole(session.roles, "ADMIN", "PROCUREMENT_ANALYST");
 
@@ -127,7 +133,10 @@ export default async function ProcessDetailPage({
   const comparisonCount = await prisma.comparison.count({
     where: { processId: id },
   });
-  const comparison = await getLatestComparison(id, session.organizationId);
+  const comparison = await getLatestComparison(id, session.organizationId, {
+    page: comparisonPage,
+    pageSize: COMPARISON_PAGE_SIZE,
+  });
 
   // Aggregate progress for the stepper.
   const agg = [...counts.values()].reduce(
@@ -172,7 +181,7 @@ export default async function ProcessDetailPage({
     return { ...s, state: "todo" };
   });
 
-  const comparisonReady = !!comparison && comparison.lines.length > 0;
+  const comparisonReady = !!comparison && comparison.totalItems > 0;
   const comparacionWarn = !comparisonReady || agg.pending > 0;
   const archivosWarn = process.uploads.some((u) => u.status === "FAILED");
   const tabLink = (t: string) => `/procesos/${process.id}?tab=${t}`;
@@ -248,6 +257,8 @@ export default async function ProcessDetailPage({
           processId={process.id}
           comparison={comparison}
           dedupe={dedupe}
+          page={comparisonPage}
+          pageSize={COMPARISON_PAGE_SIZE}
           pending={agg.pending}
           canManage={canManage}
         />
@@ -574,12 +585,16 @@ function ComparisonTab({
   processId,
   comparison,
   dedupe,
+  page,
+  pageSize,
   pending,
   canManage,
 }: {
   processId: string;
   comparison: Awaited<ReturnType<typeof getLatestComparison>>;
   dedupe: boolean;
+  page: number;
+  pageSize: number;
   pending: number;
   canManage: boolean;
 }) {
@@ -621,7 +636,7 @@ function ComparisonTab({
       )}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Ítems comparados" value={String(comparison.lines.length)} />
+        <StatCard label="Ítems comparados" value={String(comparison.totalItems)} />
         <StatCard
           label="Ahorro potencial"
           value={formatCurrency(String(comparison.totalSavings))}
@@ -663,7 +678,7 @@ function ComparisonTab({
         )}
       </div>
 
-      {comparison.lines.length === 0 ? (
+      {comparison.totalItems === 0 ? (
         <Card className="bg-amber-50">
           <p className="text-sm text-amber-900">
             No hay ítems homologados y <strong>aprobados</strong>. Aprueba en
@@ -671,7 +686,16 @@ function ComparisonTab({
           </p>
         </Card>
       ) : (
-        <ComparisonView lines={comparison.lines} dedupe={dedupe} />
+        <>
+          <ComparisonView lines={comparison.lines} dedupe={dedupe} />
+          <Pagination
+            basePath={`/procesos/${processId}`}
+            page={page}
+            pageSize={pageSize}
+            total={comparison.totalItems}
+            params={{ tab: "comparacion", ...(dedupe ? { dedupe: "1" } : {}) }}
+          />
+        </>
       )}
     </div>
   );

@@ -7,19 +7,26 @@ import { hasAnyRole } from "@/lib/rbac";
 import { PageHeader, Card, StatCard } from "@/components/ui";
 import { ActionButton } from "@/components/action-button";
 import { ComparisonView } from "@/components/comparison-view";
+import { Pagination } from "@/components/pagination";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getLatestComparison } from "@/lib/comparison";
 import { createComparison } from "../../actions";
+
+// Each line renders as its own sub-table of provider options, so keep this
+// well under the flat-table page sizes used elsewhere (e.g. /tarifas).
+const PAGE_SIZE = 20;
 
 export default async function ComparacionPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ dedupe?: string }>;
+  searchParams: Promise<{ dedupe?: string; page?: string }>;
 }) {
   const { id } = await params;
-  const dedupe = (await searchParams).dedupe === "1";
+  const sp = await searchParams;
+  const dedupe = sp.dedupe === "1";
+  const page = Math.max(1, Number(sp.page) || 1);
   const session = await requireSession();
   const canManage = hasAnyRole(session.roles, "ADMIN", "PROCUREMENT_ANALYST");
 
@@ -29,7 +36,10 @@ export default async function ComparacionPage({
   });
   if (!process) notFound();
 
-  const comparison = await getLatestComparison(id, session.organizationId);
+  const comparison = await getLatestComparison(id, session.organizationId, {
+    page,
+    pageSize: PAGE_SIZE,
+  });
 
   return (
     <div>
@@ -67,7 +77,7 @@ export default async function ComparacionPage({
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <StatCard
               label="Ítems comparados"
-              value={String(comparison.lines.length)}
+              value={String(comparison.totalItems)}
             />
             <StatCard
               label="Ahorro potencial"
@@ -113,7 +123,7 @@ export default async function ComparacionPage({
             )}
           </div>
 
-          {comparison.lines.length === 0 ? (
+          {comparison.totalItems === 0 ? (
             <Card className="bg-amber-50">
               <p className="text-sm text-amber-900">
                 Aún no hay ítems homologados y <strong>aprobados</strong> en este
@@ -129,7 +139,16 @@ export default async function ComparacionPage({
               </p>
             </Card>
           ) : (
-            <ComparisonView lines={comparison.lines} dedupe={dedupe} />
+            <>
+              <ComparisonView lines={comparison.lines} dedupe={dedupe} />
+              <Pagination
+                basePath={`/procesos/${id}/comparacion`}
+                page={page}
+                pageSize={PAGE_SIZE}
+                total={comparison.totalItems}
+                params={dedupe ? { dedupe: "1" } : {}}
+              />
+            </>
           )}
         </>
       )}

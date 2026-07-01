@@ -381,39 +381,50 @@ export async function promoteUploadRates(formData: FormData) {
   const validFrom = validFromRaw ? new Date(validFromRaw) : new Date();
   const validTo = validToRaw ? new Date(validToRaw) : null;
 
-  await prisma.$transaction(async (tx) => {
-    // Replace any rates previously promoted from this same upload.
-    await tx.rateCard.deleteMany({ where: { sourceUploadId: uploadId } });
+  const rows = items
+    .filter(
+      (item): item is typeof item & { mapping: { canonicalItemId: string } } =>
+        !!item.mapping?.canonicalItemId && item.rawPrice !== null,
+    )
+    .map((item) => ({
+      organizationId: session.organizationId,
+      canonicalItemId: item.mapping.canonicalItemId,
+      providerId: upload.providerId,
+      tariffSource: upload.fileName,
+      value: item.rawPrice!,
+      inclusions: item.inclusions,
+      exclusions: item.exclusions,
+      validFrom,
+      validTo,
+      sourceUploadId: uploadId,
+    }));
 
-    for (const item of items) {
-      if (!item.mapping?.canonicalItemId || item.rawPrice === null) continue;
-      await tx.rateCard.create({
+  // Bulk-insert in chunks instead of one create() per row: a few hundred
+  // round-trips vs. thousands is what was timing out on files of ~2k items.
+  const CHUNK_SIZE = 500;
+  await prisma.$transaction(
+    async (tx) => {
+      // Replace any rates previously promoted from this same upload.
+      await tx.rateCard.deleteMany({ where: { sourceUploadId: uploadId } });
+
+      for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+        await tx.rateCard.createMany({ data: rows.slice(i, i + CHUNK_SIZE) });
+      }
+
+      await tx.auditLog.create({
         data: {
           organizationId: session.organizationId,
-          canonicalItemId: item.mapping.canonicalItemId,
-          providerId: upload.providerId,
-          tariffSource: upload.fileName,
-          value: item.rawPrice,
-          inclusions: item.inclusions,
-          exclusions: item.exclusions,
-          validFrom,
-          validTo,
-          sourceUploadId: uploadId,
+          actorId: session.userId,
+          action: "rates.promoted",
+          entityType: "ProcessUpload",
+          entityId: uploadId,
+          after: { count: rows.length },
         },
       });
-    }
-
-    await tx.auditLog.create({
-      data: {
-        organizationId: session.organizationId,
-        actorId: session.userId,
-        action: "rates.promoted",
-        entityType: "ProcessUpload",
-        entityId: uploadId,
-        after: { count: items.length },
-      },
-    });
-  });
+    },
+    // Default interactive-transaction timeout is 5s, too short for large files.
+    { timeout: 60_000 },
+  );
 
   revalidatePath(`/procesos/${upload.processId}`);
   revalidatePath("/tarifas");
