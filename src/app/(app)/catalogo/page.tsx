@@ -100,7 +100,6 @@ export default async function CatalogoPage({
                   <th className="px-5 py-3 font-medium">Tipo</th>
                   <th className="px-5 py-3 font-medium">Nombre</th>
                   <th className="px-5 py-3 font-medium">Códigos</th>
-                  <th className="px-5 py-3 font-medium">Incluye</th>
                   <th className="px-5 py-3 font-medium">Tarifas</th>
                   {canManage && (
                     <th className="px-5 py-3 text-right font-medium">Acciones</th>
@@ -128,14 +127,6 @@ export default async function CatalogoPage({
                       {it.codes.length > 0
                         ? it.codes.map((c) => `${c.system}:${c.code}`).join(", ")
                         : "—"}
-                    </td>
-                    <td className="px-5 py-3 text-xs text-slate-600">
-                      {[
-                        it.includesFees ? "Honorarios" : null,
-                        it.includesSupplies ? "Insumos" : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ") || "—"}
                     </td>
                     <td className="px-5 py-3 text-slate-600">
                       {it._count.rateCards}
