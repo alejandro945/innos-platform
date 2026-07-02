@@ -17,9 +17,18 @@ import {
 } from "@/lib/regulatory-status";
 import { buildRegulatoryEmailDrafts } from "@/lib/regulatory-email";
 import { CopyButton } from "../copy-button";
-import { setChangeStatus, applyRegulatoryUpdate } from "../actions";
+import {
+  setChangeStatus,
+  applyRegulatoryUpdate,
+  retryRegulatoryExtraction,
+  deleteRegulatoryUpdate,
+} from "../actions";
 
 const PAGE_SIZE = 30;
+// Past this, EXTRACTING likely means the job died silently (killed by a
+// serverless timeout without INNGEST_EVENT_KEY configured — see
+// triggerRegulatoryExtraction in actions.ts) rather than still working.
+const STALE_MINUTES = 10;
 
 export default async function RegulatoryUpdateDetailPage({
   params,
@@ -42,6 +51,11 @@ export default async function RegulatoryUpdateDetailPage({
     const found = await prisma.cupsCodeChange.count({
       where: { regulatoryUpdateId: id },
     });
+    const elapsedMinutes = Math.floor(
+      (new Date().getTime() - update.createdAt.getTime()) / 60_000,
+    );
+    const stale = elapsedMinutes >= STALE_MINUTES;
+
     return (
       <div>
         <AutoRefresh endpoint={`/api/actualizaciones-cups/${id}/progress`} />
@@ -57,14 +71,52 @@ export default async function RegulatoryUpdateDetailPage({
             </Link>
           }
         />
+
+        {stale && canManage && (
+          <Card className="mb-6 bg-amber-50">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <p className="text-sm text-amber-900">
+                  Lleva {elapsedMinutes} minutos “analizando” sin novedad —
+                  probablemente el proceso se interrumpió (por ejemplo, sin
+                  Inngest configurado, el análisis puede exceder el tiempo
+                  máximo de una función serverless y morir en silencio).
+                  Podés reintentar sin volver a subir el archivo.
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <MutateButton
+                  action={retryRegulatoryExtraction}
+                  fields={{ regulatoryUpdateId: id }}
+                  variant="success"
+                  successMessage="Reintentando."
+                >
+                  Reintentar
+                </MutateButton>
+                <MutateButton
+                  action={deleteRegulatoryUpdate}
+                  fields={{ regulatoryUpdateId: id }}
+                  variant="danger"
+                  confirmText="¿Eliminar esta resolución? Tendrás que volver a subirla."
+                  successMessage="Eliminada."
+                >
+                  Eliminar
+                </MutateButton>
+              </div>
+            </div>
+          </Card>
+        )}
+
         <Card className="flex flex-col items-center justify-center gap-3 py-16 text-center">
           <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
           <p className="text-sm font-medium text-slate-700">
             Analizando la resolución con IA…
           </p>
           <p className="text-sm text-slate-500">
-            {found} cambio(s) de código detectados hasta ahora. Esto puede
-            tardar varios minutos en resoluciones extensas.
+            {found} cambio(s) de código detectados hasta ahora. Cargada hace{" "}
+            {elapsedMinutes} minuto(s). Esto puede tardar varios minutos en
+            resoluciones extensas.
           </p>
         </Card>
       </div>
@@ -87,14 +139,31 @@ export default async function RegulatoryUpdateDetailPage({
           }
         />
         <Card className="bg-rose-50">
-          <p className="text-sm text-rose-900">
-            No se pudo procesar esta resolución (archivo vacío, ilegible, o
-            sin IA configurada). Vuelva a{" "}
-            <Link href="/actualizaciones-cups" className="font-medium underline">
-              cargarla
-            </Link>
-            .
+          <p className="mb-3 text-sm text-rose-900">
+            No se pudo procesar esta resolución (archivo vacío, ilegible, la
+            IA no está configurada, o el análisis se interrumpió).
           </p>
+          {canManage && (
+            <div className="flex gap-2">
+              <MutateButton
+                action={retryRegulatoryExtraction}
+                fields={{ regulatoryUpdateId: id }}
+                variant="success"
+                successMessage="Reintentando."
+              >
+                Reintentar
+              </MutateButton>
+              <MutateButton
+                action={deleteRegulatoryUpdate}
+                fields={{ regulatoryUpdateId: id }}
+                variant="danger"
+                confirmText="¿Eliminar esta resolución? Tendrás que volver a subirla."
+                successMessage="Eliminada."
+              >
+                Eliminar
+              </MutateButton>
+            </div>
+          )}
         </Card>
       </div>
     );

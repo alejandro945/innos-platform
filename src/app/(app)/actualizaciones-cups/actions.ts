@@ -20,6 +20,40 @@ function appendNote(existing: string | null, note: string): string {
 }
 
 /**
+ * Trigger (durable via Inngest, or inline as a dev/no-queue fallback)
+ * extraction for a regulatory update that already has its PDF in Blob
+ * storage. Shared by the initial upload and by a manual retry.
+ *
+ * IMPORTANT: without INNGEST_EVENT_KEY configured, extraction runs inline
+ * inside this request's `after()` — which is bound by Vercel's serverless
+ * function duration limit (a few minutes at most). A resolution with many
+ * chunks, each needing an LLM call, can easily exceed that, silently killing
+ * the job mid-way with no error ever recorded (the process is killed, not
+ * caught) — the row is then stuck in EXTRACTING forever. Configuring Inngest
+ * is what makes this reliable for real-sized PDFs.
+ */
+function triggerRegulatoryExtraction(regulatoryUpdateId: string): void {
+  if (process.env.INNGEST_EVENT_KEY) {
+    void inngest.send({
+      name: EVENTS.extractRegulatoryUpdate,
+      data: { regulatoryUpdateId },
+    });
+    return;
+  }
+  after(async () => {
+    try {
+      await extractRegulatoryUpdateInline(regulatoryUpdateId);
+    } catch (e) {
+      console.error("extractRegulatoryUpdateInline failed:", e);
+      await prisma.regulatoryUpdate.update({
+        where: { id: regulatoryUpdateId },
+        data: { status: "FAILED" },
+      });
+    }
+  });
+}
+
+/**
  * Create a RegulatoryUpdate for a PDF already uploaded to Blob storage (the
  * browser uploads directly via @vercel/blob/client — see upload-form.tsx —
  * since a Server Action's own request body is capped at 1MB, far too small
@@ -41,28 +75,64 @@ export async function createRegulatoryUpdateFromBlob(
     },
   });
 
-  if (process.env.INNGEST_EVENT_KEY) {
-    await inngest.send({
-      name: EVENTS.extractRegulatoryUpdate,
-      data: { regulatoryUpdateId: created.id },
-    });
-  } else {
-    // No queue configured: run after the response is sent (dev / small PDFs).
-    after(async () => {
-      try {
-        await extractRegulatoryUpdateInline(created.id);
-      } catch (e) {
-        console.error("extractRegulatoryUpdateInline failed:", e);
-        await prisma.regulatoryUpdate.update({
-          where: { id: created.id },
-          data: { status: "FAILED" },
-        });
-      }
-    });
-  }
+  triggerRegulatoryExtraction(created.id);
 
   revalidatePath("/actualizaciones-cups");
   redirect(`/actualizaciones-cups/${created.id}`);
+}
+
+/**
+ * Re-run extraction from scratch for a stuck/failed update. Safe to repeat:
+ * `persistChunkResult` dedupes by oldCode, so already-recorded changes for
+ * this resolution aren't duplicated. Sending EVENTS.extractRegulatoryUpdate
+ * again also cancels any still-running prior attempt for the same id
+ * (`cancelOn` on the Inngest function), so there's never two in flight.
+ */
+export async function retryRegulatoryExtraction(formData: FormData): Promise<ActionResult> {
+  const session = await requireRoles("ADMIN");
+  const regulatoryUpdateId = String(formData.get("regulatoryUpdateId"));
+
+  const update = await prisma.regulatoryUpdate.findFirst({
+    where: { id: regulatoryUpdateId, organizationId: session.organizationId },
+    select: { id: true, sourceBlobUrl: true },
+  });
+  if (!update?.sourceBlobUrl) {
+    return { ok: false, message: "Actualización no encontrada." };
+  }
+
+  await prisma.regulatoryUpdate.update({
+    where: { id: regulatoryUpdateId },
+    data: { status: "EXTRACTING" },
+  });
+  triggerRegulatoryExtraction(regulatoryUpdateId);
+
+  revalidatePath(`/actualizaciones-cups/${regulatoryUpdateId}`);
+  return { ok: true, message: "Reintentando el análisis." };
+}
+
+/** Delete a resolution upload (e.g. one stuck or failed) so it can be re-uploaded. */
+export async function deleteRegulatoryUpdate(formData: FormData) {
+  const session = await requireRoles("ADMIN");
+  const regulatoryUpdateId = String(formData.get("regulatoryUpdateId"));
+
+  const update = await prisma.regulatoryUpdate.findFirst({
+    where: { id: regulatoryUpdateId, organizationId: session.organizationId },
+    select: { id: true, sourceBlobUrl: true },
+  });
+  if (!update) return;
+
+  await prisma.regulatoryUpdate.delete({ where: { id: regulatoryUpdateId } });
+  if (update.sourceBlobUrl) {
+    try {
+      const { del } = await import("@vercel/blob");
+      await del(update.sourceBlobUrl);
+    } catch (e) {
+      console.warn("Blob cleanup skipped:", (e as Error).message);
+    }
+  }
+
+  revalidatePath("/actualizaciones-cups");
+  redirect("/actualizaciones-cups");
 }
 
 /** Approve or reject one extracted change (before applying). */

@@ -141,6 +141,18 @@ export const extractRegulatoryUpdateFn = inngest.createFunction(
     cancelOn: [
       { event: EVENTS.extractRegulatoryUpdate, match: "data.regulatoryUpdateId" },
     ],
+    // Without this, a run that exhausts all retries (e.g. the PDF fetch or
+    // an LLM call keeps timing out) leaves the row stuck in EXTRACTING
+    // forever — nothing else ever flips its status.
+    onFailure: async ({ event }) => {
+      const { regulatoryUpdateId } = event.data.event.data as {
+        regulatoryUpdateId: string;
+      };
+      await prisma.regulatoryUpdate.update({
+        where: { id: regulatoryUpdateId },
+        data: { status: "FAILED" },
+      });
+    },
   },
   async ({ event, step }) => {
     const { regulatoryUpdateId, startChunk = 0 } = event.data as {
@@ -217,6 +229,13 @@ export const verifySisproFn = inngest.createFunction(
     cancelOn: [
       { event: EVENTS.verifySisproVerification, match: "data.verificationId" },
     ],
+    onFailure: async ({ event }) => {
+      const { verificationId } = event.data.event.data as { verificationId: string };
+      await prisma.sisproVerification.update({
+        where: { id: verificationId },
+        data: { status: "FAILED" },
+      });
+    },
   },
   async ({ event, step }) => {
     const { verificationId, startIndex = 0 } = event.data as {
