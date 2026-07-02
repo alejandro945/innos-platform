@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRoles } from "@/lib/session";
-import { storeDocument } from "@/lib/blob";
 import { repointCanonicalItem } from "@/lib/canonical-merge";
 import { embedCanonicalItem } from "@/lib/embed-items";
 import { extractRegulatoryUpdateInline } from "@/lib/regulatory-extraction";
@@ -20,43 +19,27 @@ function appendNote(existing: string | null, note: string): string {
   return existing ? `${existing}\n\n${note}` : note;
 }
 
-/** Upload a resolution PDF and kick off (durable or inline) extraction. */
-export async function uploadRegulatoryUpdate(
-  _prev: ActionState,
-  formData: FormData,
+/**
+ * Create a RegulatoryUpdate for a PDF already uploaded to Blob storage (the
+ * browser uploads directly via @vercel/blob/client — see upload-form.tsx —
+ * since a Server Action's own request body is capped at 1MB, far too small
+ * for a multi-MB resolution) and kick off (durable or inline) extraction.
+ */
+export async function createRegulatoryUpdateFromBlob(
+  fileName: string,
+  blobUrl: string,
 ): Promise<ActionState> {
   const session = await requireRoles("ADMIN");
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) {
-    return { error: "Seleccione un archivo PDF." };
-  }
-  const isPdf =
-    file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-  if (!isPdf) return { error: "El archivo debe ser un PDF." };
-
-  const buffer = Buffer.from(await file.arrayBuffer());
+  if (!fileName || !blobUrl) return { error: "Archivo inválido." };
 
   const created = await prisma.regulatoryUpdate.create({
     data: {
       organizationId: session.organizationId,
-      sourceFileName: file.name,
+      sourceFileName: fileName,
+      sourceBlobUrl: blobUrl,
       createdById: session.userId,
     },
   });
-
-  try {
-    const blobUrl = await storeDocument(file.name, buffer, "resoluciones", created.id);
-    await prisma.regulatoryUpdate.update({
-      where: { id: created.id },
-      data: { sourceBlobUrl: blobUrl },
-    });
-  } catch (e) {
-    await prisma.regulatoryUpdate.update({
-      where: { id: created.id },
-      data: { status: "FAILED" },
-    });
-    return { error: `No se pudo guardar el archivo: ${(e as Error).message}` };
-  }
 
   if (process.env.INNGEST_EVENT_KEY) {
     await inngest.send({
