@@ -415,6 +415,8 @@ model RegulatoryUpdate {
   sourceFileName   String
   sourceBlobUrl    String?
   status           RegulatoryUpdateStatus @default(EXTRACTING)
+  chunksTotal      Int?
+  chunksProcessed  Int       @default(0)
   extractedAt      DateTime?
   appliedAt        DateTime?
   appliedById      String?

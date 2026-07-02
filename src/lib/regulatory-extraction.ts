@@ -111,16 +111,38 @@ Responde únicamente con el objeto solicitado.`,
 }
 
 /**
+ * Record the total chunk count once known, so the UI can show real progress
+ * ("X of Y fragments") instead of just the cumulative changes-found count —
+ * which can legitimately stay at 0 for many chunks in a long resolution
+ * before the actual code table shows up later in the document.
+ */
+export async function setChunksTotal(
+  regulatoryUpdateId: string,
+  chunksTotal: number,
+): Promise<void> {
+  await prisma.regulatoryUpdate.update({
+    where: { id: regulatoryUpdateId },
+    data: { chunksTotal },
+  });
+}
+
+/**
  * Persist one chunk's extraction result: captures resolution metadata the
  * first time it's found (any chunk may contain it, usually the first), and
  * inserts new `CupsCodeChange` rows — deduped by oldCode against what's
  * already recorded for this resolution (chunks overlap on purpose) — each
- * matched against the org's active catalog by normativeCode.
+ * matched against the org's active catalog by normativeCode. Always bumps
+ * `chunksProcessed`, whether or not this chunk contained any changes.
  */
 export async function persistChunkResult(
   regulatoryUpdateId: string,
   result: ChunkResult,
 ): Promise<void> {
+  await prisma.regulatoryUpdate.update({
+    where: { id: regulatoryUpdateId },
+    data: { chunksProcessed: { increment: 1 } },
+  });
+
   const update = await prisma.regulatoryUpdate.findUnique({
     where: { id: regulatoryUpdateId },
     select: {
@@ -218,6 +240,8 @@ export async function extractRegulatoryUpdateInline(
     });
     return;
   }
+
+  await setChunksTotal(regulatoryUpdateId, chunks.length);
 
   for (let i = 0; i < chunks.length; i++) {
     const result = await extractChangesFromChunk(chunks[i], i);

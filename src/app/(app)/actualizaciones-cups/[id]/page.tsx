@@ -54,7 +54,18 @@ export default async function RegulatoryUpdateDetailPage({
     const elapsedMinutes = Math.floor(
       (new Date().getTime() - update.createdAt.getTime()) / 60_000,
     );
-    const stale = elapsedMinutes >= STALE_MINUTES;
+    const { chunksProcessed, chunksTotal } = update;
+    const hasProgress = chunksTotal != null;
+    const pct =
+      hasProgress && chunksTotal! > 0
+        ? Math.min(100, Math.round((chunksProcessed / chunksTotal!) * 100))
+        : 0;
+    // No visible movement yet (not even the chunk count) past the threshold
+    // is a much stronger "it died" signal than just being slow once it's
+    // actually chewing through chunks — a single chunk shouldn't take this
+    // long even in the worst case (LLM calls are timeout-bounded).
+    const likelyDead = !hasProgress && elapsedMinutes >= STALE_MINUTES;
+    const justSlow = hasProgress && elapsedMinutes >= STALE_MINUTES;
 
     return (
       <div>
@@ -72,17 +83,31 @@ export default async function RegulatoryUpdateDetailPage({
           }
         />
 
-        {stale && canManage && (
-          <Card className="mb-6 bg-amber-50">
+        {(likelyDead || justSlow) && canManage && (
+          <Card className={likelyDead ? "mb-6 bg-amber-50" : "mb-6 bg-slate-50"}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                <p className="text-sm text-amber-900">
-                  Lleva {elapsedMinutes} minutos “analizando” sin novedad —
-                  probablemente el proceso se interrumpió (por ejemplo, sin
-                  Inngest configurado, el análisis puede exceder el tiempo
-                  máximo de una función serverless y morir en silencio).
-                  Podés reintentar sin volver a subir el archivo.
+                <AlertTriangle
+                  className={`mt-0.5 h-4 w-4 shrink-0 ${likelyDead ? "text-amber-600" : "text-slate-400"}`}
+                />
+                <p className={`text-sm ${likelyDead ? "text-amber-900" : "text-slate-600"}`}>
+                  {likelyDead ? (
+                    <>
+                      Lleva {elapsedMinutes} minutos “analizando” sin
+                      procesar ni un fragmento — probablemente el proceso se
+                      interrumpió (por ejemplo, sin Inngest configurado, el
+                      análisis puede exceder el tiempo máximo de una función
+                      serverless y morir en silencio). Podés reintentar sin
+                      volver a subir el archivo.
+                    </>
+                  ) : (
+                    <>
+                      Va avanzando (fragmento {chunksProcessed} de{" "}
+                      {chunksTotal}), solo que despacio — normal si la IA
+                      corre en un servidor con pocos recursos. Si preferís no
+                      esperar, podés reintentar o eliminar.
+                    </>
+                  )}
                 </p>
               </div>
               <div className="flex shrink-0 gap-2">
@@ -108,11 +133,27 @@ export default async function RegulatoryUpdateDetailPage({
           </Card>
         )}
 
-        <Card className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+        <Card className="flex flex-col items-center justify-center gap-4 py-16 text-center">
           <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
           <p className="text-sm font-medium text-slate-700">
             Analizando la resolución con IA…
           </p>
+          {hasProgress && (
+            <div className="w-full max-w-sm">
+              <div className="mb-1 flex justify-between text-xs text-slate-500">
+                <span>
+                  fragmento {chunksProcessed} de {chunksTotal}
+                </span>
+                <span>{pct}%</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-blue-600 transition-all"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          )}
           <p className="text-sm text-slate-500">
             {found} cambio(s) de código detectados hasta ahora. Cargada hace{" "}
             {elapsedMinutes} minuto(s). Esto puede tardar varios minutos en

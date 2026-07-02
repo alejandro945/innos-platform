@@ -5,6 +5,7 @@ import {
   extractChangesFromChunk,
   persistChunkResult,
   finalizeRegulatoryExtraction,
+  setChunksTotal,
 } from "@/lib/regulatory-extraction";
 import { verifyOneItem, finalizeSisproVerification } from "@/lib/sispro";
 import { inngest, EVENTS } from "./client";
@@ -180,6 +181,12 @@ export const extractRegulatoryUpdateFn = inngest.createFunction(
         }),
       );
       return { failed: true, reason: "empty-pdf" };
+    }
+
+    if (startChunk === 0) {
+      await step.run("set-chunks-total", () =>
+        setChunksTotal(regulatoryUpdateId, chunks.length),
+      );
     }
 
     const endChunk = Math.min(startChunk + CHUNK_BATCH_SIZE, chunks.length);

@@ -16,13 +16,15 @@ export async function GET(
     where: { id, organizationId: orgId },
     select: {
       status: true,
+      chunksProcessed: true,
+      chunksTotal: true,
       _count: { select: { changes: true } },
     },
   });
   if (!update) return NextResponse.json({ error: "not-found" }, { status: 404 });
 
   const active = update.status === "EXTRACTING";
-  const signature = `${update.status}:${update._count.changes}`;
+  const signature = `${update.status}:${update.chunksProcessed}:${update._count.changes}`;
 
   return NextResponse.json(
     { active, signature },
