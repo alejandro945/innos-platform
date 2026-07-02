@@ -28,21 +28,48 @@ const EMPTY_CHUNK_RESULT: ChunkResult = {
   changes: [],
 };
 
+// A resolution PDF is mostly legal boilerplate (considerandos, citations,
+// signatures) — only a small fraction of chunks actually contain a code
+// table. Calling the LLM on every chunk anyway is what turns a normal-sized
+// resolution into an hours-long run (each call costs real time, especially
+// on a resource-constrained self-hosted model) for zero benefit on chunks
+// that can't possibly contain a code change. Skip the LLM call entirely for
+// chunks that don't even look like they contain codes — cheap and, unlike
+// the LLM call, effectively instant. Deliberately permissive (better to send
+// a few boilerplate chunks to the LLM than to miss a real change).
+const CUPS_CODE_KEYWORD =
+  /(c[oó]digo|cups|sustit[uú]yase|modif[ií]quese|derog|elimina|adici[oó]nese|reempla)/i;
+
+function looksLikelyToContainCodes(chunk: string): boolean {
+  // Strip whitespace before matching: PDF table extraction often splits a
+  // single code across artificial spaces/line breaks (column layout).
+  const compact = chunk.replace(/\s+/g, "");
+  const codeRuns = compact.match(/\d{6}/g);
+  const codeCount = codeRuns ? codeRuns.length : 0;
+  if (codeCount >= 3) return true; // looks like a code table
+  return codeCount >= 1 && CUPS_CODE_KEYWORD.test(chunk);
+}
+
 /**
  * Ask the LLM to extract CUPS code changes from one chunk of resolution text.
  * A resolution is split into chunks (lib/pdf-extract.ts) before this is
  * called; each chunk is independent, so this is safe to run as one Inngest
- * step per chunk.
+ * step per chunk. `chunkIndex === 0` always goes to the LLM regardless of the
+ * code-likelihood heuristic, since the resolution's number/date/title
+ * typically appear in the opening paragraph, which rarely contains codes.
  */
 export async function extractChangesFromChunk(
   chunk: string,
   chunkIndex: number,
 ): Promise<ChunkResult> {
   if (!isLlmEnabled()) return EMPTY_CHUNK_RESULT;
+  if (chunkIndex !== 0 && !looksLikelyToContainCodes(chunk)) {
+    return EMPTY_CHUNK_RESULT;
+  }
 
   const raw = await structuredGenerate({
     tier: "reasoning",
-    maxTokens: 4096,
+    maxTokens: 2048,
     toolName: "report_cups_changes",
     toolDescription:
       "Reporta los cambios de códigos CUPS normativos mencionados en este fragmento de una resolución del Ministerio de Salud de Colombia.",
