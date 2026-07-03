@@ -210,30 +210,22 @@ export default async function RegulatoryUpdateDetailPage({
     );
   }
 
-  const [matchedChanges, matchedTotal, unmatchedChanges, unmatchedTotal, approvedCount] =
-    await Promise.all([
-      prisma.cupsCodeChange.findMany({
-        where: { regulatoryUpdateId: id, matchedItemId: { not: null } },
-        include: { matchedItem: { select: { canonicalCode: true, name: true } } },
-        orderBy: { oldCode: "asc" },
-        skip: (page - 1) * PAGE_SIZE,
-        take: PAGE_SIZE,
-      }),
-      prisma.cupsCodeChange.count({
-        where: { regulatoryUpdateId: id, matchedItemId: { not: null } },
-      }),
-      prisma.cupsCodeChange.findMany({
-        where: { regulatoryUpdateId: id, matchedItemId: null },
-        orderBy: { oldCode: "asc" },
-        take: 50,
-      }),
-      prisma.cupsCodeChange.count({
-        where: { regulatoryUpdateId: id, matchedItemId: null },
-      }),
-      prisma.cupsCodeChange.count({
-        where: { regulatoryUpdateId: id, status: "APPROVED" },
-      }),
-    ]);
+  const [changes, totalChanges, matchedTotal, approvedCount] = await Promise.all([
+    prisma.cupsCodeChange.findMany({
+      where: { regulatoryUpdateId: id },
+      include: { matchedItem: { select: { canonicalCode: true, name: true } } },
+      orderBy: { oldCode: "asc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
+    prisma.cupsCodeChange.count({ where: { regulatoryUpdateId: id } }),
+    prisma.cupsCodeChange.count({
+      where: { regulatoryUpdateId: id, matchedItemId: { not: null } },
+    }),
+    prisma.cupsCodeChange.count({
+      where: { regulatoryUpdateId: id, status: "APPROVED" },
+    }),
+  ]);
 
   const emailDrafts =
     update.status === "APPLIED" ? await buildRegulatoryEmailDrafts(id) : [];
@@ -270,13 +262,13 @@ export default async function RegulatoryUpdateDetailPage({
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
-          label="Códigos que afectan tu catálogo"
-          value={String(matchedTotal)}
+          label="Cambios de CUPS detectados"
+          value={String(totalChanges)}
+          hint="Todos los que encontró la IA en la resolución"
         />
         <StatCard
-          label="Otros cambios de la resolución"
-          value={String(unmatchedTotal)}
-          hint="No coinciden con ningún CUPS de tu catálogo"
+          label="Coinciden con tu catálogo"
+          value={String(matchedTotal)}
         />
         <StatCard
           label="Aprobados, listos para aplicar"
@@ -308,21 +300,26 @@ export default async function RegulatoryUpdateDetailPage({
       <Card className="mb-6 overflow-hidden p-0">
         <div className="border-b border-slate-200 px-5 py-3">
           <h2 className="text-base font-semibold text-slate-900">
-            Códigos que afectan tu catálogo
+            Cambios de código detectados
           </h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Todo lo que la IA encontró en la resolución, coincida o no con tu
+            catálogo — para que siempre quede un registro de lo que se
+            analizó.
+          </p>
         </div>
-        {matchedChanges.length === 0 ? (
+        {changes.length === 0 ? (
           <p className="px-5 py-6 text-sm text-slate-500">
-            Ningún código de esta resolución coincide con tu catálogo actual.
+            La IA no detectó ningún cambio de código CUPS en esta resolución.
           </p>
         ) : (
           <>
             <table className="w-full text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Ítem en tu catálogo</th>
                   <th className="px-5 py-3 font-medium">CUPS viejo</th>
                   <th className="px-5 py-3 font-medium">CUPS nuevo</th>
+                  <th className="px-5 py-3 font-medium">¿Coincide con tu catálogo?</th>
                   <th className="px-5 py-3 font-medium">Estado</th>
                   {canManage && (
                     <th className="px-5 py-3 text-right font-medium">Acciones</th>
@@ -330,16 +327,8 @@ export default async function RegulatoryUpdateDetailPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {matchedChanges.map((c) => (
+                {changes.map((c) => (
                   <tr key={c.id} className="align-top hover:bg-slate-50">
-                    <td className="px-5 py-3">
-                      <span className="font-mono text-xs text-slate-500">
-                        {c.matchedItem?.canonicalCode}
-                      </span>
-                      <span className="block text-slate-900">
-                        {c.matchedItem?.name}
-                      </span>
-                    </td>
                     <td className="px-5 py-3">
                       <span className="font-mono text-xs text-slate-900">
                         {c.oldCode}
@@ -372,6 +361,22 @@ export default async function RegulatoryUpdateDetailPage({
                       )}
                     </td>
                     <td className="px-5 py-3">
+                      {c.matchedItem ? (
+                        <>
+                          <span className="font-mono text-xs text-slate-500">
+                            {c.matchedItem.canonicalCode}
+                          </span>
+                          <span className="block text-slate-900">
+                            {c.matchedItem.name}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-slate-400">
+                          No coincide con tu catálogo
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3">
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${CUPS_CHANGE_STATUS_STYLES[c.status]}`}
                       >
@@ -380,28 +385,30 @@ export default async function RegulatoryUpdateDetailPage({
                     </td>
                     {canManage && (
                       <td className="px-5 py-3">
-                        <div className="flex justify-end gap-1">
-                          {c.status !== "APPROVED" && c.status !== "APPLIED" && (
-                            <MutateButton
-                              action={setChangeStatus}
-                              fields={{ changeId: c.id, status: "APPROVED" }}
-                              variant="success"
-                              successMessage="Aprobado."
-                            >
-                              Aprobar
-                            </MutateButton>
-                          )}
-                          {c.status !== "REJECTED" && c.status !== "APPLIED" && (
-                            <MutateButton
-                              action={setChangeStatus}
-                              fields={{ changeId: c.id, status: "REJECTED" }}
-                              variant="danger"
-                              successMessage="Descartado."
-                            >
-                              Descartar
-                            </MutateButton>
-                          )}
-                        </div>
+                        {c.matchedItem && (
+                          <div className="flex justify-end gap-1">
+                            {c.status !== "APPROVED" && c.status !== "APPLIED" && (
+                              <MutateButton
+                                action={setChangeStatus}
+                                fields={{ changeId: c.id, status: "APPROVED" }}
+                                variant="success"
+                                successMessage="Aprobado."
+                              >
+                                Aprobar
+                              </MutateButton>
+                            )}
+                            {c.status !== "REJECTED" && c.status !== "APPLIED" && (
+                              <MutateButton
+                                action={setChangeStatus}
+                                fields={{ changeId: c.id, status: "REJECTED" }}
+                                variant="danger"
+                                successMessage="Descartado."
+                              >
+                                Descartar
+                              </MutateButton>
+                            )}
+                          </div>
+                        )}
                       </td>
                     )}
                   </tr>
@@ -413,35 +420,12 @@ export default async function RegulatoryUpdateDetailPage({
                 basePath={`/actualizaciones-cups/${id}`}
                 page={page}
                 pageSize={PAGE_SIZE}
-                total={matchedTotal}
+                total={totalChanges}
               />
             </div>
           </>
         )}
       </Card>
-
-      {unmatchedTotal > 0 && (
-        <Card className="mb-6">
-          <details>
-            <summary className="cursor-pointer text-sm font-medium text-slate-700">
-              Otros cambios de esta resolución ({unmatchedTotal}) — no afectan
-              tu catálogo
-            </summary>
-            <ul className="mt-3 space-y-1 text-xs text-slate-500">
-              {unmatchedChanges.map((c) => (
-                <li key={c.id}>
-                  <span className="font-mono">{c.oldCode}</span>
-                  {c.newCode ? ` → ${c.newCode}` : " (eliminado)"}
-                  {c.oldDescription ? ` — ${c.oldDescription}` : ""}
-                </li>
-              ))}
-              {unmatchedTotal > unmatchedChanges.length && (
-                <li>… y {unmatchedTotal - unmatchedChanges.length} más.</li>
-              )}
-            </ul>
-          </details>
-        </Card>
-      )}
 
       {emailDrafts.length > 0 && (
         <Card>
