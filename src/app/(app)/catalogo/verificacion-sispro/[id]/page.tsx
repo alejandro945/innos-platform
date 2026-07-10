@@ -70,7 +70,7 @@ export default async function SisproVerificationPage({
   const [results, total, totalItems] = await Promise.all([
     prisma.sisproVerificationResult.findMany({
       where: { verificationId: id },
-      include: { canonicalItem: { select: { canonicalCode: true, name: true } } },
+      include: { canonicalItem: { select: { name: true } } },
       orderBy: { status: "asc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
@@ -165,11 +165,8 @@ export default async function SisproVerificationPage({
               <tbody className="divide-y divide-slate-100">
                 {results.map((r) => (
                   <tr key={r.id} className="hover:bg-slate-50">
-                    <td className="px-5 py-3">
-                      <span className="font-mono text-xs text-slate-500">
-                        {r.canonicalItem.canonicalCode}
-                      </span>
-                      <span className="block text-slate-900">{r.canonicalItem.name}</span>
+                    <td className="px-5 py-3 text-slate-900">
+                      {r.canonicalItem.name}
                     </td>
                     <td className="px-5 py-3 font-mono text-xs text-slate-700">
                       {r.normativeCode}

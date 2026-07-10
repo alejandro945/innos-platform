@@ -178,7 +178,7 @@ export async function runSisproVerificationInline(
       normativeCode: { not: null },
     },
     select: { id: true, name: true, normativeCode: true },
-    orderBy: { canonicalCode: "asc" },
+    orderBy: { name: "asc" },
   });
 
   for (const item of items) {

@@ -10,7 +10,6 @@ import type { ActionResult } from "@/lib/action-result";
 
 const itemSchema = z.object({
   kind: z.enum(["SERVICE", "MEDICATION", "DEVICE", "SUPPLY"]),
-  canonicalCode: z.string().trim().min(1, "El CUPS propio es obligatorio."),
   normativeCode: z.string().trim().optional(),
   name: z.string().trim().min(2, "El nombre es obligatorio."),
   description: z.string().trim().optional(),
@@ -28,7 +27,6 @@ export async function createCanonicalItem(
 
   const parsed = itemSchema.safeParse({
     kind: formData.get("kind"),
-    canonicalCode: formData.get("canonicalCode"),
     normativeCode: formData.get("normativeCode"),
     name: formData.get("name"),
     description: formData.get("description"),
@@ -40,27 +38,21 @@ export async function createCanonicalItem(
   }
   const data = parsed.data;
 
-  let createdId: string;
-  try {
-    const created = await prisma.canonicalItem.create({
-      data: {
-        organizationId: session.organizationId,
-        kind: data.kind,
-        canonicalCode: data.canonicalCode,
-        normativeCode: data.normativeCode || null,
-        name: data.name,
-        description: data.description || null,
-        includesFees: data.includesFees,
-        includesSupplies: data.includesSupplies,
-        codes: data.normativeCode
-          ? { create: [{ system: "CUPS", code: data.normativeCode }] }
-          : undefined,
-      },
-    });
-    createdId = created.id;
-  } catch {
-    return { error: "Ya existe un ítem con ese CUPS propio." };
-  }
+  const created = await prisma.canonicalItem.create({
+    data: {
+      organizationId: session.organizationId,
+      kind: data.kind,
+      normativeCode: data.normativeCode || null,
+      name: data.name,
+      description: data.description || null,
+      includesFees: data.includesFees,
+      includesSupplies: data.includesSupplies,
+      codes: data.normativeCode
+        ? { create: [{ system: "CUPS", code: data.normativeCode }] }
+        : undefined,
+    },
+  });
+  const createdId = created.id;
 
   // Generate the search embedding (no-op when embeddings are not configured).
   try {
@@ -81,7 +73,6 @@ export async function updateCanonicalItem(
   const id = String(formData.get("id"));
   const parsed = itemSchema.safeParse({
     kind: formData.get("kind"),
-    canonicalCode: formData.get("canonicalCode"),
     normativeCode: formData.get("normativeCode"),
     name: formData.get("name"),
     description: formData.get("description"),
@@ -98,22 +89,17 @@ export async function updateCanonicalItem(
   if (!existing) return { error: "Ítem no encontrado." };
 
   const data = parsed.data;
-  try {
-    await prisma.canonicalItem.update({
-      where: { id },
-      data: {
-        kind: data.kind,
-        canonicalCode: data.canonicalCode,
-        normativeCode: data.normativeCode || null,
-        name: data.name,
-        description: data.description || null,
-        includesFees: data.includesFees,
-        includesSupplies: data.includesSupplies,
-      },
-    });
-  } catch {
-    return { error: "Ya existe un ítem con ese CUPS propio." };
-  }
+  await prisma.canonicalItem.update({
+    where: { id },
+    data: {
+      kind: data.kind,
+      normativeCode: data.normativeCode || null,
+      name: data.name,
+      description: data.description || null,
+      includesFees: data.includesFees,
+      includesSupplies: data.includesSupplies,
+    },
+  });
 
   try {
     await embedCanonicalItem(id);
@@ -165,11 +151,11 @@ export async function mergeCanonicalItems(
   const [keep, discard] = await Promise.all([
     prisma.canonicalItem.findFirst({
       where: { id: keepId, organizationId: session.organizationId },
-      select: { id: true, name: true, canonicalCode: true },
+      select: { id: true, name: true },
     }),
     prisma.canonicalItem.findFirst({
       where: { id: discardId, organizationId: session.organizationId },
-      select: { id: true, name: true, canonicalCode: true },
+      select: { id: true, name: true },
     }),
   ]);
   if (!keep || !discard) return { ok: false, message: "Ítem no encontrado." };
@@ -190,7 +176,6 @@ export async function mergeCanonicalItems(
         entityId: keepId,
         before: {
           discardId: discard.id,
-          discardCode: discard.canonicalCode,
           discardName: discard.name,
         },
       },

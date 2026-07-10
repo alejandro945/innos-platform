@@ -12,7 +12,7 @@ import {
   createCanonicalAndApprove,
 } from "./actions";
 
-export type Candidate = { id: string; code: string; name: string; score: number };
+export type Candidate = { id: string; name: string; score: number };
 
 export type ReviewItem = {
   mappingId: string;
@@ -92,7 +92,6 @@ export function ReviewRow({
                         ? "border-slate-900 bg-slate-900 text-white"
                         : "border-slate-200 text-slate-600 hover:bg-slate-50"
                     }`}
-                    title={c.code}
                   >
                     {c.name} · {Math.round(c.score * 100)}%
                   </button>

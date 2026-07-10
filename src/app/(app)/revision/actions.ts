@@ -1,6 +1,5 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -97,13 +96,11 @@ export async function createCanonicalAndApprove(
 
   const name = mapping.providerItem.rawName.trim();
   const rawCode = mapping.providerItem.rawCode?.trim() || null;
-  const canonicalCode = `INO-${randomUUID().slice(0, 8).toUpperCase()}`;
 
   const created = await prisma.canonicalItem.create({
     data: {
       organizationId: session.organizationId,
       kind: inferKind(name),
-      canonicalCode,
       normativeCode: rawCode,
       name,
       isApproved: true,
@@ -235,7 +232,6 @@ export async function bulkCreateAndApproveNoMatch(
       data: {
         organizationId: session.organizationId,
         kind: inferKind(name),
-        canonicalCode: `INO-${randomUUID().slice(0, 8).toUpperCase()}`,
         normativeCode: rawCode,
         name,
         isApproved: true,

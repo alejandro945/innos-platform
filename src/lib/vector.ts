@@ -21,7 +21,6 @@ export async function upsertItemEmbedding(
 
 export type VectorCandidate = {
   id: string;
-  canonicalCode: string;
   name: string;
   description: string | null;
   kind: string;
@@ -41,7 +40,6 @@ export async function searchSimilarItems(
   try {
     return await prisma.$queryRaw<VectorCandidate[]>`
       SELECT ci.id,
-             ci."canonicalCode",
              ci.name,
              ci.description,
              ci.kind::text AS kind,

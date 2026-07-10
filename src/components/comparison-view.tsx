@@ -51,20 +51,22 @@ export function ComparisonView({
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3">
             <div>
               {line.data.normativeCode && (
-                <span className="mr-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
-                  CUPS normativo
-                </span>
+                <>
+                  <span className="mr-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                    CUPS normativo
+                  </span>
+                  <span className="font-mono text-xs text-slate-500">
+                    {line.data.canonicalCode}
+                  </span>
+                </>
               )}
-              <span className="font-mono text-xs text-slate-500">
-                {line.data.canonicalCode}
-              </span>
               <span className="ml-2 font-medium text-slate-900">
                 {line.data.canonicalName}
               </span>
               {grouped && (
                 <div className="mt-1 text-xs text-amber-700">
                   Agrupa {line.data.internalItems.length} ítems del catálogo
-                  propio ({line.data.internalItems.map((i) => i.canonicalCode).join(", ")}
+                  propio ({line.data.internalItems.map((i) => i.name).join(", ")}
                   ) — considera fusionarlos en{" "}
                   <a href="/analisis" className="underline">
                     Catálogo
@@ -91,6 +93,7 @@ export function ComparisonView({
                 {grouped && (
                   <th className="px-4 py-2 font-medium">Ítem interno</th>
                 )}
+                <th className="px-4 py-2 font-medium">Código proveedor</th>
                 <th className="px-4 py-2 font-medium">Valor</th>
                 <th className="px-4 py-2 font-medium">Inclusiones</th>
                 <th className="px-4 py-2 font-medium">Exclusiones</th>
@@ -114,10 +117,13 @@ export function ComparisonView({
                         )}
                       </td>
                       {grouped && (
-                        <td className="px-4 py-2 font-mono text-xs text-slate-500">
-                          {opt.internalCode}
+                        <td className="px-4 py-2 text-xs text-slate-500">
+                          {opt.internalName}
                         </td>
                       )}
+                      <td className="px-4 py-2 font-mono text-xs text-slate-500">
+                        {opt.providerCode ?? "—"}
+                      </td>
                       <td className="px-4 py-2 font-medium text-slate-900">
                         {formatCurrency(opt.value)}
                       </td>

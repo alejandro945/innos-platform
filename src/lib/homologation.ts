@@ -51,7 +51,7 @@ export async function decideHomologation(
   const candidateList = candidates
     .map(
       (c, i) =>
-        `${i + 1}. id=${c.id} | código=${c.canonicalCode} | ${c.name}${c.description ? ` — ${c.description}` : ""} | tipo=${c.kind} | similitud=${c.score.toFixed(2)}`,
+        `${i + 1}. id=${c.id} | ${c.name}${c.description ? ` — ${c.description}` : ""} | tipo=${c.kind} | similitud=${c.score.toFixed(2)}`,
     )
     .join("\n");
 

@@ -3,7 +3,7 @@ import { lexicalScore } from "@/lib/text-similarity";
 
 export type DuplicateItem = {
   id: string;
-  canonicalCode: string;
+  normativeCode: string | null;
   name: string;
   kind: string;
   rateCount: number;
@@ -29,12 +29,12 @@ function pairKey(a: string, b: string): string {
 
 type VectorPairRow = {
   id1: string;
-  code1: string;
+  code1: string | null;
   name1: string;
   kind1: string;
   count1: bigint | number;
   id2: string;
-  code2: string;
+  code2: string | null;
   name2: string;
   kind2: string;
   count2: bigint | number;
@@ -53,9 +53,9 @@ async function findVectorDuplicatePairs(
   try {
     const rows = await prisma.$queryRaw<VectorPairRow[]>`
       SELECT
-        ci1.id AS id1, ci1."canonicalCode" AS code1, ci1.name AS name1, ci1.kind::text AS kind1,
+        ci1.id AS id1, ci1."normativeCode" AS code1, ci1.name AS name1, ci1.kind::text AS kind1,
         (SELECT COUNT(*) FROM "RateCard" rc WHERE rc."canonicalItemId" = ci1.id) AS count1,
-        ci2.id AS id2, ci2."canonicalCode" AS code2, ci2.name AS name2, ci2.kind::text AS kind2,
+        ci2.id AS id2, ci2."normativeCode" AS code2, ci2.name AS name2, ci2.kind::text AS kind2,
         (SELECT COUNT(*) FROM "RateCard" rc WHERE rc."canonicalItemId" = ci2.id) AS count2,
         (e1.embedding <=> e2.embedding) AS distance
       FROM "ItemEmbedding" e1
@@ -74,14 +74,14 @@ async function findVectorDuplicatePairs(
     return rows.map((r) => ({
       a: {
         id: r.id1,
-        canonicalCode: r.code1,
+        normativeCode: r.code1,
         name: r.name1,
         kind: r.kind1,
         rateCount: Number(r.count1),
       },
       b: {
         id: r.id2,
-        canonicalCode: r.code2,
+        normativeCode: r.code2,
         name: r.name2,
         kind: r.kind2,
         rateCount: Number(r.count2),
@@ -104,7 +104,7 @@ async function findLexicalDuplicatePairs(
     where: { organizationId, isActive: true },
     select: {
       id: true,
-      canonicalCode: true,
+      normativeCode: true,
       name: true,
       kind: true,
       _count: { select: { rateCards: true } },
@@ -123,14 +123,14 @@ async function findLexicalDuplicatePairs(
         pairs.push({
           a: {
             id: a.id,
-            canonicalCode: a.canonicalCode,
+            normativeCode: a.normativeCode,
             name: a.name,
             kind: a.kind,
             rateCount: a._count.rateCards,
           },
           b: {
             id: b.id,
-            canonicalCode: b.canonicalCode,
+            normativeCode: b.normativeCode,
             name: b.name,
             kind: b.kind,
             rateCount: b._count.rateCards,

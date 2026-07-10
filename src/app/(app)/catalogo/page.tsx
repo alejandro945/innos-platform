@@ -40,7 +40,6 @@ export default async function CatalogoPage({
       ? {
           OR: [
             { name: { contains: q, mode: "insensitive" } },
-            { canonicalCode: { contains: q, mode: "insensitive" } },
             { normativeCode: { contains: q, mode: "insensitive" } },
           ],
         }
@@ -49,7 +48,7 @@ export default async function CatalogoPage({
   const [items, total] = await Promise.all([
     prisma.canonicalItem.findMany({
       where,
-      orderBy: { canonicalCode: "asc" },
+      orderBy: { name: "asc" },
       include: { codes: true, _count: { select: { rateCards: true } } },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
@@ -136,7 +135,7 @@ export default async function CatalogoPage({
             <table className="w-full text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-medium">CUPS propio</th>
+                  <th className="px-5 py-3 font-medium">CUPS normativo</th>
                   <th className="px-5 py-3 font-medium">Tipo</th>
                   <th className="px-5 py-3 font-medium">Nombre</th>
                   <th className="px-5 py-3 font-medium">Códigos</th>
@@ -153,7 +152,7 @@ export default async function CatalogoPage({
                     className={it.isActive ? "hover:bg-slate-50" : "bg-slate-50/60 opacity-70 hover:opacity-100"}
                   >
                     <td className="px-5 py-3 font-mono text-xs font-medium text-slate-900">
-                      {it.canonicalCode}
+                      {it.normativeCode ?? "—"}
                       {!it.isActive && (
                         <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-600">
                           Inactivo
@@ -191,7 +190,6 @@ export default async function CatalogoPage({
                               initial={{
                                 id: it.id,
                                 kind: it.kind,
-                                canonicalCode: it.canonicalCode,
                                 normativeCode: it.normativeCode,
                                 name: it.name,
                                 description: it.description,

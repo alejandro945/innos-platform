@@ -314,18 +314,22 @@ export default async function AnalisisPage({
                     </div>
                     <div className="mt-1 grid grid-cols-1 gap-1 sm:grid-cols-2">
                       <div>
-                        <span className="font-mono text-xs text-slate-500">
-                          {p.a.canonicalCode}
-                        </span>{" "}
+                        {p.a.normativeCode && (
+                          <span className="font-mono text-xs text-slate-500">
+                            {p.a.normativeCode}
+                          </span>
+                        )}{" "}
                         <span className="text-slate-900">{p.a.name}</span>
                         <span className="ml-1 text-xs text-slate-400">
                           ({p.a.rateCount} tarifa{p.a.rateCount === 1 ? "" : "s"})
                         </span>
                       </div>
                       <div>
-                        <span className="font-mono text-xs text-slate-500">
-                          {p.b.canonicalCode}
-                        </span>{" "}
+                        {p.b.normativeCode && (
+                          <span className="font-mono text-xs text-slate-500">
+                            {p.b.normativeCode}
+                          </span>
+                        )}{" "}
                         <span className="text-slate-900">{p.b.name}</span>
                         <span className="ml-1 text-xs text-slate-400">
                           ({p.b.rateCount} tarifa{p.b.rateCount === 1 ? "" : "s"})
@@ -342,7 +346,7 @@ export default async function AnalisisPage({
                         confirmText={`Se conservará "${p.a.name}" y se eliminará "${p.b.name}" (sus tarifas y homologaciones pasan al que conservas). ¿Continuar?`}
                         successMessage="Ítems fusionados."
                       >
-                        Mantener &quot;{p.a.canonicalCode}&quot;
+                        Mantener &quot;{p.a.name}&quot;
                       </MutateButton>
                       <MutateButton
                         action={mergeCanonicalItems}
@@ -351,7 +355,7 @@ export default async function AnalisisPage({
                         confirmText={`Se conservará "${p.b.name}" y se eliminará "${p.a.name}" (sus tarifas y homologaciones pasan al que conservas). ¿Continuar?`}
                         successMessage="Ítems fusionados."
                       >
-                        Mantener &quot;{p.b.canonicalCode}&quot;
+                        Mantener &quot;{p.b.name}&quot;
                       </MutateButton>
                     </div>
                   )}

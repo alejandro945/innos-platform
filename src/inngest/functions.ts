@@ -263,7 +263,7 @@ export const verifySisproFn = inngest.createFunction(
           normativeCode: { not: null },
         },
         select: { id: true, name: true, normativeCode: true },
-        orderBy: { canonicalCode: "asc" },
+        orderBy: { name: "asc" },
       });
     });
 

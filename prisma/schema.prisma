@@ -124,7 +124,6 @@ model CanonicalItem {
   id              String   @id @default(cuid())
   organizationId  String
   kind            ItemKind @default(SERVICE)
-  canonicalCode   String // e.g. INO-QT-01 (CUPS propio)
   normativeCode   String? // CUPS SISPRO
   name            String
   description     String?
@@ -144,7 +143,6 @@ model CanonicalItem {
   cupsChangesCreated CupsCodeChange[] @relation("CupsChangeCreated")
   sisproResults      SisproVerificationResult[]
 
-  @@unique([organizationId, canonicalCode])
   @@index([organizationId, kind])
 }
 
@@ -192,6 +190,8 @@ model RateCard {
   unit            String?
   inclusions      String?
   exclusions      String?
+  providerCode    String? // the provider's own reference code for this line, as it appears in their tariff file
+  extra           Json? // unmapped columns from the provider's source file, {header: value}
   validFrom       DateTime
   validTo         DateTime?
   sourceUploadId  String?
@@ -292,6 +292,7 @@ model ProviderItem {
   currency   String   @default("COP")
   inclusions String?
   exclusions String?
+  extra      Json? // headers from the source file not mapped to a known field, {header: value}
 
   upload   ProcessUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
   provider Provider      @relation(fields: [providerId], references: [id])

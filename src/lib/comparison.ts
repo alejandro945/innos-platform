@@ -7,24 +7,27 @@ export type ComparisonOption = {
   value: number | null;
   inclusions: string | null;
   exclusions: string | null;
-  // Which internal catalog entry (CUPS propio) this provider's price was
-  // homologated to. Kept per-option because a line can fold together several
-  // internal items that share one normative code (see grouping note below).
-  internalCode: string;
+  // Which internal catalog entry this provider's price was homologated to.
+  // Kept per-option because a line can fold together several internal items
+  // that share one normative code (see grouping note below).
   internalName: string;
+  // The provider's own reference code for this line, straight from their
+  // source file — specific to that provider, not a shared platform code.
+  providerCode: string | null;
+  // Headers from the provider's source file that didn't map to a known field.
+  extra: Record<string, unknown> | null;
 };
 
 export type InternalCatalogRef = {
   id: string;
-  canonicalCode: string;
   name: string;
 };
 
 export type ComparisonLineData = {
   // Official regulatory code (CUPS SISPRO), when the canonical item has one.
   normativeCode: string | null;
-  // Display code for the line: the normative code when grouped by it,
-  // otherwise the single internal (CUPS propio) code.
+  // Display code for the line: the normative code when grouped by it, empty
+  // when the canonical item has none.
   canonicalCode: string;
   canonicalName: string;
   // Distinct internal catalog entries folded into this line. Length > 1 means
@@ -44,8 +47,8 @@ export type ComparisonLineData = {
  * and computes min/max/avg + best price + potential savings.
  *
  * Grouping is by normative CUPS code (the official/regulatory code) when the
- * canonical item has one, not by the internal "CUPS propio" — two internal
- * catalog entries that both map to the same normative code represent the same
+ * canonical item has one, not by the internal catalog entry itself — two
+ * internal catalog entries that both map to the same normative code represent the same
  * real-world service, so their provider prices belong in one comparison line
  * even if the org's own catalog hasn't been merged yet. Items without a
  * normative code fall back to grouping by their own internal item.
@@ -81,7 +84,7 @@ export async function generateComparison(
     if (!line) {
       line = {
         normativeCode: ci.normativeCode,
-        canonicalCode: ci.normativeCode ?? ci.canonicalCode,
+        canonicalCode: ci.normativeCode ?? "",
         canonicalName: ci.name,
         internalItems: [],
         minValue: null,
@@ -98,11 +101,7 @@ export async function generateComparison(
     const seen = internalIdsSeen.get(groupKey)!;
     if (!seen.has(ci.id)) {
       seen.add(ci.id);
-      line.internalItems.push({
-        id: ci.id,
-        canonicalCode: ci.canonicalCode,
-        name: ci.name,
-      });
+      line.internalItems.push({ id: ci.id, name: ci.name });
     }
 
     line.options.push({
@@ -111,8 +110,9 @@ export async function generateComparison(
       value,
       inclusions: it.inclusions,
       exclusions: it.exclusions,
-      internalCode: ci.canonicalCode,
       internalName: ci.name,
+      providerCode: it.rawCode,
+      extra: (it.extra as Record<string, unknown> | null) ?? null,
     });
   }
 
@@ -134,7 +134,9 @@ export async function generateComparison(
   }
 
   const lines = [...groups.values()].sort((a, b) =>
-    a.canonicalCode.localeCompare(b.canonicalCode),
+    (a.canonicalCode || a.canonicalName).localeCompare(
+      b.canonicalCode || b.canonicalName,
+    ),
   );
 
   const totalSavings = lines.reduce((acc, l) => acc + (l.savings ?? 0), 0);
@@ -235,7 +237,7 @@ function toLine(l: {
     canonicalCode: raw.canonicalCode ?? "",
     canonicalName: raw.canonicalName ?? "",
     internalItems: raw.internalItems ?? [
-      { id: l.canonicalItemId, canonicalCode: raw.canonicalCode ?? "", name: raw.canonicalName ?? "" },
+      { id: l.canonicalItemId, name: raw.canonicalName ?? "" },
     ],
     savings: raw.savings ?? null,
     options: (raw.options ?? []).map((o) => ({
@@ -244,8 +246,9 @@ function toLine(l: {
       value: o.value ?? null,
       inclusions: o.inclusions ?? null,
       exclusions: o.exclusions ?? null,
-      internalCode: o.internalCode ?? raw.canonicalCode ?? "",
       internalName: o.internalName ?? raw.canonicalName ?? "",
+      providerCode: o.providerCode ?? null,
+      extra: o.extra ?? null,
     })),
   };
 

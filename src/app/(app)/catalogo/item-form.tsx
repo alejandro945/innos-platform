@@ -17,7 +17,6 @@ const initialState: ActionState = {};
 export type ItemInitial = {
   id: string;
   kind: ItemKind;
-  canonicalCode: string;
   normativeCode: string | null;
   name: string;
   description: string | null;
@@ -57,15 +56,6 @@ export function ItemForm({ initial }: { initial?: ItemInitial }) {
               </option>
             ))}
           </Select>
-        </Field>
-        <Field label="CUPS propio" htmlFor="canonicalCode">
-          <Input
-            id="canonicalCode"
-            name="canonicalCode"
-            required
-            defaultValue={initial?.canonicalCode}
-            placeholder="INO-QT-01"
-          />
         </Field>
         <Field label="CUPS normativo (SISPRO)" htmlFor="normativeCode">
           <Input

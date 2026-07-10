@@ -213,7 +213,7 @@ export default async function RegulatoryUpdateDetailPage({
   const [changes, totalChanges, matchedTotal, approvedCount] = await Promise.all([
     prisma.cupsCodeChange.findMany({
       where: { regulatoryUpdateId: id },
-      include: { matchedItem: { select: { canonicalCode: true, name: true } } },
+      include: { matchedItem: { select: { normativeCode: true, name: true } } },
       orderBy: { oldCode: "asc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
@@ -281,14 +281,14 @@ export default async function RegulatoryUpdateDetailPage({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-emerald-900">
               {approvedCount} cambio(s) aprobado(s) listos para aplicar. Se
-              crea un ítem nuevo por cada uno (mismo CUPS propio, CUPS
-              normativo actualizado) y el ítem viejo queda inactivo.
+              crea un ítem nuevo por cada uno (mismo nombre, CUPS normativo
+              actualizado) y el ítem viejo queda inactivo.
             </p>
             <MutateButton
               action={applyRegulatoryUpdate}
               fields={{ regulatoryUpdateId: id }}
               variant="success"
-              confirmText={`¿Aplicar ${approvedCount} cambio(s) aprobado(s)? Se crea un ítem nuevo por cada reemplazo (mismo CUPS propio, CUPS normativo actualizado) y el ítem viejo queda inactivo. Esta acción no se puede deshacer desde aquí.`}
+              confirmText={`¿Aplicar ${approvedCount} cambio(s) aprobado(s)? Se crea un ítem nuevo por cada reemplazo (mismo nombre, CUPS normativo actualizado) y el ítem viejo queda inactivo. Esta acción no se puede deshacer desde aquí.`}
               successMessage="Cambios aplicados."
             >
               Aplicar cambios aprobados
@@ -363,9 +363,11 @@ export default async function RegulatoryUpdateDetailPage({
                     <td className="px-5 py-3">
                       {c.matchedItem ? (
                         <>
-                          <span className="font-mono text-xs text-slate-500">
-                            {c.matchedItem.canonicalCode}
-                          </span>
+                          {c.matchedItem.normativeCode && (
+                            <span className="font-mono text-xs text-slate-500">
+                              {c.matchedItem.normativeCode}
+                            </span>
+                          )}
                           <span className="block text-slate-900">
                             {c.matchedItem.name}
                           </span>

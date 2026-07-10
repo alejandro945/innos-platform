@@ -233,6 +233,12 @@ export async function confirmMapping(formData: FormData) {
   }
   if (!mapping.name) return; // name is required to identify items
 
+  // Any header not claimed by one of the known logical fields is preserved
+  // as-is on each row, instead of being silently dropped — the export can
+  // then reverse this and put them back as their own columns.
+  const mappedHeaders = new Set(Object.values(mapping).filter((h): h is string => !!h));
+  const extraHeaders = stored.headers.filter((h) => !mappedHeaders.has(h));
+
   await prisma.$transaction(async (tx) => {
     // Reset any previously materialized items for this upload.
     await tx.providerItem.deleteMany({ where: { uploadId } });
@@ -242,6 +248,13 @@ export async function confirmMapping(formData: FormData) {
       rowNumber++;
       const rawName = String(row[mapping.name!] ?? "").trim();
       if (!rawName) continue;
+      const extra: Record<string, unknown> = {};
+      for (const h of extraHeaders) {
+        const value = row[h];
+        if (value !== null && value !== undefined && String(value).trim() !== "") {
+          extra[h] = value;
+        }
+      }
       await tx.providerItem.create({
         data: {
           uploadId,
@@ -257,6 +270,7 @@ export async function confirmMapping(formData: FormData) {
           exclusions: mapping.exclusions
             ? String(row[mapping.exclusions] ?? "").trim() || null
             : null,
+          extra: Object.keys(extra).length > 0 ? (extra as Prisma.InputJsonValue) : undefined,
         },
       });
     }
@@ -394,6 +408,8 @@ export async function promoteUploadRates(formData: FormData) {
       value: item.rawPrice!,
       inclusions: item.inclusions,
       exclusions: item.exclusions,
+      providerCode: item.rawCode,
+      extra: (item.extra as Prisma.InputJsonValue | null) ?? undefined,
       validFrom,
       validTo,
       sourceUploadId: uploadId,

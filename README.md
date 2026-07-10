@@ -56,7 +56,7 @@ sigue funcionando.**
 ```
 prisma/schema.prisma     Modelo de datos (data store layer)
 prisma/sql/              SQL de pgvector (referencia)
-scripts/                 import:excel · db:vector · backfill:embeddings
+scripts/                 db:vector · backfill:embeddings
 src/auth.config.ts       Config de auth edge-safe (usada por el proxy)
 src/auth.ts              NextAuth + provisión JIT + roles + login local
 src/proxy.ts             Protección de rutas (Next 16 proxy)
@@ -88,7 +88,6 @@ cp .env.example .env.local && cp .env.example .env
 pnpm install
 pnpm exec prisma migrate dev      # crea las tablas
 pnpm db:vector                    # columna vector(EMBEDDING_DIMS) + índice HNSW
-pnpm import:excel                 # siembra catálogo + tarifas desde el Excel
 pnpm backfill:embeddings          # genera embeddings con Ollama
 pnpm dev
 ```
@@ -114,7 +113,6 @@ necesita).
    ```bash
    pnpm exec prisma migrate deploy
    pnpm db:vector
-   pnpm import:excel          # opcional
    pnpm backfill:embeddings
    ```
 

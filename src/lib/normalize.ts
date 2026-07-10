@@ -104,7 +104,6 @@ export async function normalizeProviderItem(providerItemId: string) {
 
   const candidateSnapshot = candidates.slice(0, 5).map((c) => ({
     id: c.id,
-    code: c.canonicalCode,
     name: c.name,
     score: Math.round(c.score * 100) / 100,
   }));

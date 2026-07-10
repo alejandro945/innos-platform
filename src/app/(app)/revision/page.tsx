@@ -57,12 +57,12 @@ export default async function RevisionPage({
 
   const catalog = await prisma.canonicalItem.findMany({
     where: { organizationId: session.organizationId },
-    orderBy: { canonicalCode: "asc" },
-    select: { id: true, canonicalCode: true, name: true },
+    orderBy: { name: "asc" },
+    select: { id: true, normativeCode: true, name: true },
   });
   const options = catalog.map((c) => ({
     id: c.id,
-    label: `${c.canonicalCode} — ${c.name}`,
+    label: c.normativeCode ? `${c.normativeCode} — ${c.name}` : c.name,
   }));
 
   return (

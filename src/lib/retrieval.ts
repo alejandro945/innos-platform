@@ -5,14 +5,17 @@ import { lexicalScore } from "@/lib/text-similarity";
 
 export type Candidate = {
   id: string;
-  canonicalCode: string;
   name: string;
   description: string | null;
   kind: string;
   score: number; // 0..1 (higher is closer)
 };
 
-/** Exact match by provider-supplied code (CUPS/CUM/own/normative). */
+/**
+ * Exact match by provider-supplied code. Only compared against the official
+ * normative code (CUPS/CUM/ATC) — a provider's own code (rawCode) is specific
+ * to that provider's file and must never be matched across providers.
+ */
 export async function findByCode(
   organizationId: string,
   rawCode: string | null,
@@ -22,11 +25,7 @@ export async function findByCode(
   if (!code) return null;
 
   const byCanonical = await prisma.canonicalItem.findFirst({
-    where: {
-      organizationId,
-      isActive: true,
-      OR: [{ canonicalCode: code }, { normativeCode: code }],
-    },
+    where: { organizationId, isActive: true, normativeCode: code },
     select: { id: true },
   });
   if (byCanonical) return byCanonical.id;
@@ -83,7 +82,6 @@ export async function retrieveCandidates(
         method: "vector",
         candidates: vec.map((v) => ({
           id: v.id,
-          canonicalCode: v.canonicalCode,
           name: v.name,
           description: v.description,
           kind: v.kind,
@@ -98,7 +96,6 @@ export async function retrieveCandidates(
     where: { organizationId, isActive: true },
     select: {
       id: true,
-      canonicalCode: true,
       name: true,
       description: true,
       kind: true,

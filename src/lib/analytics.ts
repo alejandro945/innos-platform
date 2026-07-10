@@ -59,7 +59,7 @@ export async function detectPriceAnomalies(
       if (ratio >= highRatio || ratio <= lowRatio) {
         anomalies.push({
           rateId: r.id,
-          itemCode: r.canonicalItem.canonicalCode,
+          itemCode: r.canonicalItem.normativeCode ?? "",
           itemName: r.canonicalItem.name,
           providerName: r.provider.name,
           value,
@@ -100,7 +100,7 @@ export async function expiringRates(
   });
   return rates.map((r) => ({
     rateId: r.id,
-    itemCode: r.canonicalItem.canonicalCode,
+    itemCode: r.canonicalItem.normativeCode ?? "",
     itemName: r.canonicalItem.name,
     providerName: r.provider.name,
     value: Number(r.value),
@@ -165,7 +165,7 @@ export async function savingsSimulator(
     const avg = values.reduce((a, b) => a + b, 0) / values.length;
     const ci = list[0].canonicalItem;
     lines.push({
-      itemCode: ci.canonicalCode,
+      itemCode: ci.normativeCode ?? "",
       itemName: ci.name,
       bestProvider: best.name,
       bestValue: best.value,

@@ -161,8 +161,8 @@ export async function setChangeStatus(formData: FormData): Promise<ActionResult>
 
 /**
  * Apply every APPROVED change with a matched catalog item: creates a new
- * CanonicalItem cloned from the matched one (same CUPS propio) with the
- * updated normativeCode, deactivates the old one, and repoints its
+ * CanonicalItem cloned from the matched one with the updated normativeCode,
+ * deactivates the old one, and repoints its
  * rates/mappings — or, if the resolution eliminates the code with no
  * replacement, just deactivates the matched item. See
  * src/lib/canonical-merge.ts for the repoint logic (shared with the manual
@@ -223,15 +223,13 @@ export async function applyRegulatoryUpdate(formData: FormData): Promise<ActionR
       let newItemId: string | null = null;
 
       if (change.newCode) {
-        const archivedCode = `${oldItem.canonicalCode}__retirado__${oldItem.id.slice(-6)}`;
         await tx.canonicalItem.update({
           where: { id: oldItem.id },
           data: {
-            canonicalCode: archivedCode,
             isActive: false,
             description: appendNote(
               oldItem.description,
-              `Inactivado por ${resolutionLabel}. Reemplazado por CUPS normativo ${change.newCode} (mismo CUPS propio: ${oldItem.canonicalCode}).`,
+              `Inactivado por ${resolutionLabel}. Reemplazado por CUPS normativo ${change.newCode}.`,
             ),
           },
         });
@@ -240,12 +238,11 @@ export async function applyRegulatoryUpdate(formData: FormData): Promise<ActionR
           data: {
             organizationId: session.organizationId,
             kind: oldItem.kind,
-            canonicalCode: oldItem.canonicalCode, // original code, now freed
             normativeCode: change.newCode,
             name: oldItem.name,
             description: appendNote(
               oldItem.description,
-              `Creado por ${resolutionLabel}. Actualiza CUPS normativo ${change.oldCode} → ${change.newCode} (mismo CUPS propio).`,
+              `Creado por ${resolutionLabel}. Actualiza CUPS normativo ${change.oldCode} → ${change.newCode}.`,
             ),
             includesFees: oldItem.includesFees,
             includesSupplies: oldItem.includesSupplies,
@@ -283,7 +280,7 @@ export async function applyRegulatoryUpdate(formData: FormData): Promise<ActionR
           action: "catalog.cups_updated",
           entityType: "CanonicalItem",
           entityId: oldItem.id,
-          before: { oldCode: change.oldCode, canonicalCode: oldItem.canonicalCode },
+          before: { oldCode: change.oldCode, normativeCode: oldItem.normativeCode },
           after: { newCode: change.newCode, regulatoryUpdateId },
         },
       });

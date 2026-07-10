@@ -70,22 +70,31 @@ export async function naturalSearch(
   const where: Prisma.RateCardWhereInput = {
     organizationId,
     ...(parsed.onlyCurrent
-      ? {
-          validFrom: { lte: now },
-          OR: [{ validTo: null }, { validTo: { gte: now } }],
-        }
+      ? { validFrom: { lte: now } }
       : {}),
-    ...(parsed.term
-      ? {
-          canonicalItem: {
-            OR: [
-              { name: { contains: parsed.term, mode: "insensitive" } },
-              { canonicalCode: { contains: parsed.term, mode: "insensitive" } },
-              { description: { contains: parsed.term, mode: "insensitive" } },
-            ],
-          },
-        }
-      : {}),
+    AND: [
+      ...(parsed.onlyCurrent
+        ? [{ OR: [{ validTo: null }, { validTo: { gte: now } }] }]
+        : []),
+      ...(parsed.term
+        ? [
+            {
+              OR: [
+                {
+                  canonicalItem: {
+                    OR: [
+                      { name: { contains: parsed.term, mode: "insensitive" as const } },
+                      { normativeCode: { contains: parsed.term, mode: "insensitive" as const } },
+                      { description: { contains: parsed.term, mode: "insensitive" as const } },
+                    ],
+                  },
+                },
+                { providerCode: { contains: parsed.term, mode: "insensitive" as const } },
+              ],
+            },
+          ]
+        : []),
+    ],
   };
 
   const orderBy: Prisma.RateCardOrderByWithRelationInput =
@@ -106,7 +115,7 @@ export async function naturalSearch(
     parsed,
     results: rates.map((r) => ({
       id: r.id,
-      itemCode: r.canonicalItem.canonicalCode,
+      itemCode: r.providerCode ?? r.canonicalItem.normativeCode ?? "",
       itemName: r.canonicalItem.name,
       providerName: r.provider.name,
       value: Number(r.value),

@@ -48,34 +48,37 @@ export default async function TarifasPage({
   const now = new Date();
   const where: Prisma.RateCardWhereInput = {
     organizationId: session.organizationId,
-    ...(onlyCurrent
-      ? {
-          validFrom: { lte: now },
-          OR: [{ validTo: null }, { validTo: { gte: now } }],
-        }
-      : {}),
+    ...(onlyCurrent ? { validFrom: { lte: now } } : {}),
     ...(proveedor ? { providerId: proveedor } : {}),
-    ...(q || tipo
-      ? {
-          canonicalItem: {
-            ...(tipo ? { kind: tipo } : {}),
-            ...(q
-              ? {
-                  OR: [
-                    { name: { contains: q, mode: "insensitive" } },
-                    { canonicalCode: { contains: q, mode: "insensitive" } },
-                  ],
-                }
-              : {}),
-          },
-        }
-      : {}),
+    ...(tipo ? { canonicalItem: { kind: tipo } } : {}),
+    AND: [
+      ...(onlyCurrent
+        ? [{ OR: [{ validTo: null }, { validTo: { gte: now } }] }]
+        : []),
+      ...(q
+        ? [
+            {
+              OR: [
+                {
+                  canonicalItem: {
+                    OR: [
+                      { name: { contains: q, mode: "insensitive" as const } },
+                      { normativeCode: { contains: q, mode: "insensitive" as const } },
+                    ],
+                  },
+                },
+                { providerCode: { contains: q, mode: "insensitive" as const } },
+              ],
+            },
+          ]
+        : []),
+    ],
   };
 
   const [rates, total, items, providers] = await Promise.all([
     prisma.rateCard.findMany({
       where,
-      orderBy: [{ canonicalItem: { canonicalCode: "asc" } }, { value: "asc" }],
+      orderBy: [{ canonicalItem: { name: "asc" } }, { value: "asc" }],
       include: {
         canonicalItem: true,
         provider: true,
@@ -87,7 +90,7 @@ export default async function TarifasPage({
     prisma.rateCard.count({ where }),
     prisma.canonicalItem.findMany({
       where: { organizationId: session.organizationId },
-      orderBy: { canonicalCode: "asc" },
+      orderBy: { name: "asc" },
     }),
     prisma.provider.findMany({
       where: { organizationId: session.organizationId, status: "ACTIVE" },
@@ -97,7 +100,7 @@ export default async function TarifasPage({
 
   const itemOptions = items.map((i) => ({
     id: i.id,
-    label: `${i.canonicalCode} — ${i.name}`,
+    label: i.normativeCode ? `${i.normativeCode} — ${i.name}` : i.name,
   }));
   const providerOptions = providers.map((p) => ({ id: p.id, label: p.name }));
 
@@ -178,6 +181,7 @@ export default async function TarifasPage({
               <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-5 py-3 font-medium">Ítem</th>
+                  <th className="px-5 py-3 font-medium">Código proveedor</th>
                   <th className="px-5 py-3 font-medium">Proveedor</th>
                   <th className="px-5 py-3 font-medium">Valor</th>
                   <th className="px-5 py-3 font-medium">Inclusiones</th>
@@ -192,15 +196,20 @@ export default async function TarifasPage({
                 {rates.map((r) => (
                   <tr key={r.id} className="hover:bg-slate-50">
                     <td className="px-5 py-3">
-                      <span className="font-mono text-xs text-slate-500">
-                        {r.canonicalItem.canonicalCode}
-                      </span>
+                      {r.canonicalItem.normativeCode && (
+                        <span className="font-mono text-xs text-slate-500">
+                          {r.canonicalItem.normativeCode}
+                        </span>
+                      )}
                       <span className="block text-slate-900">
                         {r.canonicalItem.name}
                       </span>
                       <span className="text-xs text-slate-400">
                         {ITEM_KIND_LABELS[r.canonicalItem.kind]}
                       </span>
+                    </td>
+                    <td className="px-5 py-3 font-mono text-xs text-slate-600">
+                      {r.providerCode ?? "—"}
                     </td>
                     <td className="px-5 py-3 text-slate-700">
                       <div className="font-medium text-slate-900">
@@ -245,7 +254,9 @@ export default async function TarifasPage({
                             <RateForm
                               initial={{
                                 id: r.id,
-                                itemLabel: `${r.canonicalItem.canonicalCode} — ${r.canonicalItem.name}`,
+                                itemLabel: r.canonicalItem.normativeCode
+                                  ? `${r.canonicalItem.normativeCode} — ${r.canonicalItem.name}`
+                                  : r.canonicalItem.name,
                                 providerLabel: r.provider.name,
                                 tariffSource: r.tariffSource,
                                 value: r.value.toString(),
