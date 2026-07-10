@@ -42,6 +42,9 @@ import {
 // well under the flat-table page sizes used elsewhere (e.g. /tarifas).
 const COMPARISON_PAGE_SIZE = 20;
 
+// Module scope: the component shadows `process` with the procurement process.
+const blobEnabled = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+
 export default async function ProcessDetailPage({
   params,
   searchParams,
@@ -273,7 +276,11 @@ export default async function ProcessDetailPage({
             triggerLabel="+ Cargar archivo"
             title="Cargar archivo de proveedor"
           >
-            <UploadForm processId={process.id} providers={providerOptions} />
+            <UploadForm
+              processId={process.id}
+              providers={providerOptions}
+              blobEnabled={blobEnabled}
+            />
           </Modal>
         )}
       </div>

@@ -99,20 +99,16 @@ export async function deleteProcess(
   return { ok: true, message: "Proceso eliminado." };
 }
 
-/** Upload a provider file, store it, parse it and suggest a column mapping. */
-export async function uploadAndParse(
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const session = await requireRoles("ADMIN", "PROCUREMENT_ANALYST");
-  const processId = String(formData.get("processId"));
-  const providerId = String(formData.get("providerId"));
-  const file = formData.get("file");
-
-  if (!providerId) return { error: "Seleccione un proveedor." };
-  if (!(file instanceof File) || file.size === 0) {
-    return { error: "Seleccione un archivo." };
-  }
+/** Shared tail of both upload paths: parse, suggest mapping, create the upload. */
+async function ingestProviderFile(opts: {
+  session: { organizationId: string; userId: string };
+  processId: string;
+  providerId: string;
+  fileName: string;
+  blobUrl: string;
+  buffer: Buffer;
+}): Promise<ActionState> {
+  const { session, processId, providerId, fileName, blobUrl, buffer } = opts;
 
   const [process, provider] = await Promise.all([
     prisma.procurementProcess.findFirst({
@@ -124,19 +120,9 @@ export async function uploadAndParse(
   ]);
   if (!process || !provider) return { error: "Proceso o proveedor inválido." };
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-
-  // Store raw file as evidence (best effort: don't block parsing in dev).
-  let blobUrl = "";
-  try {
-    blobUrl = await storeProviderFile(file.name, buffer, processId);
-  } catch (e) {
-    console.warn("Blob storage skipped:", (e as Error).message);
-  }
-
   let parsed;
   try {
-    parsed = parseSpreadsheet(buffer, file.name);
+    parsed = parseSpreadsheet(buffer, fileName);
   } catch (e) {
     return { error: (e as Error).message };
   }
@@ -154,7 +140,7 @@ export async function uploadAndParse(
       processId,
       providerId,
       uploadedById: session.userId,
-      fileName: file.name,
+      fileName,
       blobUrl,
       status: "MAPPING",
       rowCount: parsed.rows.length,
@@ -174,6 +160,86 @@ export async function uploadAndParse(
 
   revalidatePath(`/procesos/${processId}`);
   return { ok: true };
+}
+
+/**
+ * Upload a provider file through the Server Action itself (fallback when Blob
+ * storage isn't configured, e.g. local dev). Body-size-limited; the primary
+ * path is uploadAndParseFromBlob.
+ */
+export async function uploadAndParse(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await requireRoles("ADMIN", "PROCUREMENT_ANALYST");
+  const processId = String(formData.get("processId"));
+  const providerId = String(formData.get("providerId"));
+  const file = formData.get("file");
+
+  if (!providerId) return { error: "Seleccione un proveedor." };
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "Seleccione un archivo." };
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  // Store raw file as evidence (best effort: don't block parsing in dev).
+  let blobUrl = "";
+  try {
+    blobUrl = await storeProviderFile(file.name, buffer, processId);
+  } catch (e) {
+    console.warn("Blob storage skipped:", (e as Error).message);
+  }
+
+  return ingestProviderFile({
+    session,
+    processId,
+    providerId,
+    fileName: file.name,
+    blobUrl,
+    buffer,
+  });
+}
+
+/**
+ * Primary upload path: the browser uploads the file straight to Blob storage
+ * (via /api/procesos/upload-blob) and only the resulting URL goes through
+ * this action — Server Action bodies are capped by Next.js and by the
+ * hosting platform (~4.5MB on Vercel), too small for real tariff files.
+ */
+export async function uploadAndParseFromBlob(
+  processId: string,
+  providerId: string,
+  fileName: string,
+  blobUrl: string,
+): Promise<ActionState> {
+  const session = await requireRoles("ADMIN", "PROCUREMENT_ANALYST");
+  if (!processId || !providerId || !fileName || !blobUrl) {
+    return { error: "Datos inválidos." };
+  }
+  // Only fetch from Vercel Blob storage (the URL comes from the client).
+  let host = "";
+  try {
+    host = new URL(blobUrl).hostname;
+  } catch {
+    return { error: "URL de archivo inválida." };
+  }
+  if (!host.endsWith(".blob.vercel-storage.com")) {
+    return { error: "URL de archivo inválida." };
+  }
+
+  const res = await fetch(blobUrl);
+  if (!res.ok) return { error: "No se pudo leer el archivo subido." };
+  const buffer = Buffer.from(await res.arrayBuffer());
+
+  return ingestProviderFile({
+    session,
+    processId,
+    providerId,
+    fileName,
+    blobUrl,
+    buffer,
+  });
 }
 
 /** Delete an uploaded file (e.g. wrong file). Cascades its items + mappings;
