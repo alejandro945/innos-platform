@@ -224,6 +224,7 @@ export async function confirmMapping(formData: FormData) {
     code: null,
     price: null,
     unit: null,
+    type: null,
     inclusions: null,
     exclusions: null,
   };
@@ -234,8 +235,8 @@ export async function confirmMapping(formData: FormData) {
   if (!mapping.name) return; // name is required to identify items
 
   // Any header not claimed by one of the known logical fields is preserved
-  // as-is on each row, instead of being silently dropped — the export can
-  // then reverse this and put them back as their own columns.
+  // as-is on each row, instead of being silently dropped — the UI and the
+  // export show them concatenated as a single "Campos adicionales" column.
   const mappedHeaders = new Set(Object.values(mapping).filter((h): h is string => !!h));
   const extraHeaders = stored.headers.filter((h) => !mappedHeaders.has(h));
 
@@ -263,6 +264,7 @@ export async function confirmMapping(formData: FormData) {
           rawName,
           rawCode: mapping.code ? String(row[mapping.code] ?? "").trim() || null : null,
           rawUnit: mapping.unit ? String(row[mapping.unit] ?? "").trim() || null : null,
+          rawType: mapping.type ? String(row[mapping.type] ?? "").trim() || null : null,
           rawPrice: mapping.price ? parsePrice(row[mapping.price]) : null,
           inclusions: mapping.inclusions
             ? String(row[mapping.inclusions] ?? "").trim() || null
@@ -405,6 +407,7 @@ export async function promoteUploadRates(formData: FormData) {
       canonicalItemId: item.mapping.canonicalItemId,
       providerId: upload.providerId,
       tariffSource: upload.fileName,
+      type: item.rawType?.trim().toUpperCase() || "PROPIA",
       value: item.rawPrice!,
       inclusions: item.inclusions,
       exclusions: item.exclusions,

@@ -10,6 +10,7 @@ const rateSchema = z.object({
   canonicalItemId: z.string().trim().min(1, "Seleccione un ítem canónico."),
   providerId: z.string().trim().min(1, "Seleccione un proveedor."),
   tariffSource: z.string().trim().optional(),
+  type: z.string().trim().optional(),
   value: z.coerce
     .number()
     .positive("El valor debe ser mayor a cero.")
@@ -33,6 +34,7 @@ export async function createRate(
     canonicalItemId: formData.get("canonicalItemId"),
     providerId: formData.get("providerId"),
     tariffSource: formData.get("tariffSource"),
+    type: formData.get("type"),
     value: formData.get("value"),
     unit: formData.get("unit"),
     inclusions: formData.get("inclusions"),
@@ -62,6 +64,7 @@ export async function createRate(
       canonicalItemId: data.canonicalItemId,
       providerId: data.providerId,
       tariffSource: data.tariffSource || null,
+      type: data.type?.toUpperCase() || "PROPIA",
       value: data.value,
       unit: data.unit || null,
       inclusions: data.inclusions || null,
@@ -77,6 +80,7 @@ export async function createRate(
 
 const rateUpdateSchema = z.object({
   tariffSource: z.string().trim().optional(),
+  type: z.string().trim().optional(),
   value: z.coerce
     .number()
     .positive("El valor debe ser mayor a cero.")
@@ -100,6 +104,7 @@ export async function updateRate(
   const id = String(formData.get("id"));
   const parsed = rateUpdateSchema.safeParse({
     tariffSource: formData.get("tariffSource"),
+    type: formData.get("type"),
     value: formData.get("value"),
     unit: formData.get("unit"),
     inclusions: formData.get("inclusions"),
@@ -121,6 +126,7 @@ export async function updateRate(
     where: { id },
     data: {
       tariffSource: data.tariffSource || null,
+      type: data.type?.toUpperCase() || "PROPIA",
       value: data.value,
       unit: data.unit || null,
       inclusions: data.inclusions || null,

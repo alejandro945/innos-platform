@@ -17,9 +17,16 @@ describe("heuristicMapping", () => {
       code: "CUPS PROPIO",
       price: "VALOR", // not "TARIFARIO" (regression guard for the \btarifa\b fix)
       unit: null,
+      type: null, // "TARIFARIO / CONTRATISTA" must not be claimed as tariff type
       inclusions: null,
       exclusions: "EXCLUSIONES",
     });
+  });
+
+  it("maps a tariff-type column when present", () => {
+    const m = heuristicMapping(["Descripción", "Valor", "Tipo de tarifa"]);
+    expect(m.type).toBe("Tipo de tarifa");
+    expect(m.price).toBe("Valor");
   });
 
   it("detects common provider variants", () => {

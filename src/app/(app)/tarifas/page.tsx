@@ -9,7 +9,7 @@ import { Modal } from "@/components/modal";
 import { MutateButton } from "@/components/mutate-button";
 import { Pagination } from "@/components/pagination";
 import { TableFilters } from "@/components/table-filters";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { concatExtra, formatCurrency, formatDate } from "@/lib/format";
 import { ITEM_KIND_LABELS, ITEM_KINDS } from "@/lib/constants";
 import { RateForm } from "./rate-form";
 import { deleteRate } from "./actions";
@@ -183,9 +183,11 @@ export default async function TarifasPage({
                   <th className="px-5 py-3 font-medium">Ítem</th>
                   <th className="px-5 py-3 font-medium">Código proveedor</th>
                   <th className="px-5 py-3 font-medium">Proveedor</th>
+                  <th className="px-5 py-3 font-medium">Tipo</th>
                   <th className="px-5 py-3 font-medium">Valor</th>
                   <th className="px-5 py-3 font-medium">Inclusiones</th>
                   <th className="px-5 py-3 font-medium">Exclusiones</th>
+                  <th className="px-5 py-3 font-medium">Campos adicionales</th>
                   <th className="px-5 py-3 font-medium">Vigencia</th>
                   {canManage && (
                     <th className="px-5 py-3 text-right font-medium">Acciones</th>
@@ -231,6 +233,11 @@ export default async function TarifasPage({
                         )}
                       </div>
                     </td>
+                    <td className="px-5 py-3">
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                        {r.type}
+                      </span>
+                    </td>
                     <td className="px-5 py-3 font-medium text-slate-900">
                       {formatCurrency(r.value.toString())}
                     </td>
@@ -239,6 +246,12 @@ export default async function TarifasPage({
                     </td>
                     <td className="px-5 py-3 text-xs text-slate-600">
                       {r.exclusions ?? "—"}
+                    </td>
+                    <td
+                      className="max-w-56 px-5 py-3 text-xs text-slate-600"
+                      title={concatExtra(r.extra) || undefined}
+                    >
+                      {concatExtra(r.extra) || "—"}
                     </td>
                     <td className="px-5 py-3 text-xs text-slate-500">
                       {formatDate(r.validFrom)} → {formatDate(r.validTo)}
@@ -259,6 +272,7 @@ export default async function TarifasPage({
                                   : r.canonicalItem.name,
                                 providerLabel: r.provider.name,
                                 tariffSource: r.tariffSource,
+                                type: r.type,
                                 value: r.value.toString(),
                                 inclusions: r.inclusions,
                                 exclusions: r.exclusions,

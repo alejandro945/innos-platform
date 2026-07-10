@@ -185,6 +185,7 @@ model RateCard {
   canonicalItemId String
   providerId      String
   tariffSource    String? // e.g. "Tarifario A — Aliado 1"
+  type            String    @default("PROPIA") // tariff type from the provider file (e.g. PROPIA, SOAT, ISS); PROPIA when not specified
   value           Decimal   @db.Decimal(14, 2)
   currency        String    @default("COP")
   unit            String?
@@ -289,6 +290,7 @@ model ProviderItem {
   rawCode    String?
   rawUnit    String?
   rawPrice   Decimal? @db.Decimal(14, 2)
+  rawType    String? // tariff type column from the source file, if mapped
   currency   String   @default("COP")
   inclusions String?
   exclusions String?

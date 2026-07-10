@@ -16,7 +16,7 @@ import { PageHeader, Card, StatCard } from "@/components/ui";
 import { ComparisonView } from "@/components/comparison-view";
 import { Pagination } from "@/components/pagination";
 import { getLatestComparison } from "@/lib/comparison";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { concatExtra, formatCurrency, formatDate } from "@/lib/format";
 import {
   PROCESS_STATUS_LABELS,
   PROCESS_STATUS_STYLES,
@@ -539,6 +539,10 @@ export default async function ProcessDetailPage({
                             <th className="py-2 pr-4 font-medium">Nombre crudo</th>
                             <th className="py-2 pr-4 font-medium">Código</th>
                             <th className="py-2 pr-4 font-medium">Valor</th>
+                            <th className="py-2 pr-4 font-medium">Tipo</th>
+                            <th className="py-2 pr-4 font-medium">
+                              Columnas no mapeadas
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -557,6 +561,15 @@ export default async function ProcessDetailPage({
                                 {it.rawPrice
                                   ? formatCurrency(it.rawPrice.toString())
                                   : "—"}
+                              </td>
+                              <td className="py-2 pr-4 text-slate-600">
+                                {it.rawType?.toUpperCase() || "PROPIA"}
+                              </td>
+                              <td
+                                className="max-w-72 truncate py-2 pr-4 text-xs text-slate-500"
+                                title={concatExtra(it.extra) || undefined}
+                              >
+                                {concatExtra(it.extra) || "—"}
                               </td>
                             </tr>
                           ))}

@@ -15,6 +15,7 @@ export type RateInitial = {
   itemLabel: string;
   providerLabel: string;
   tariffSource: string | null;
+  type: string;
   value: string;
   inclusions: string | null;
   exclusions: string | null;
@@ -111,6 +112,14 @@ export function RateForm({
             name="tariffSource"
             defaultValue={initial?.tariffSource ?? ""}
             placeholder="Tarifario A"
+          />
+        </Field>
+        <Field label="Tipo de tarifa" htmlFor="type" hint="PROPIA si se deja vacío">
+          <Input
+            id="type"
+            name="type"
+            defaultValue={initial?.type ?? "PROPIA"}
+            placeholder="PROPIA"
           />
         </Field>
         <Field label="Valor (COP)" htmlFor="value">

@@ -28,3 +28,16 @@ export function formatDate(value: Date | string | null | undefined) {
 export function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
+
+/**
+ * Flatten the unmapped source-file columns preserved on an item/rate
+ * (`extra` JSON, {header: value}) into a single "Header: value | …" string,
+ * so they can be shown/exported as one column.
+ */
+export function concatExtra(extra: unknown): string {
+  if (!extra || typeof extra !== "object") return "";
+  return Object.entries(extra as Record<string, unknown>)
+    .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== "")
+    .map(([k, v]) => `${k}: ${String(v).trim()}`)
+    .join(" | ");
+}
