@@ -1,11 +1,16 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { Field, Select, SubmitButton } from "@/components/form";
 import { useModalClose } from "@/components/modal";
 import { uploadAndParse, type ActionState } from "../actions";
 
 const initialState: ActionState = {};
+
+// Must stay below the Server Action bodySizeLimit (next.config.ts): a request
+// over that limit is rejected with a 413 before the action runs, and the form
+// would hang in "pending" with no error.
+const MAX_FILE_MB = 20;
 
 export function UploadForm({
   processId,
@@ -15,6 +20,7 @@ export function UploadForm({
   providers: { id: string; label: string }[];
 }) {
   const [state, formAction] = useActionState(uploadAndParse, initialState);
+  const [sizeError, setSizeError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const close = useModalClose();
 
@@ -34,7 +40,25 @@ export function UploadForm({
   }
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-4">
+    <form
+      ref={formRef}
+      action={formAction}
+      onSubmit={(e) => {
+        const input = e.currentTarget.elements.namedItem(
+          "file",
+        ) as HTMLInputElement | null;
+        const file = input?.files?.[0];
+        if (file && file.size > MAX_FILE_MB * 1024 * 1024) {
+          e.preventDefault();
+          setSizeError(
+            `El archivo pesa ${(file.size / 1024 / 1024).toFixed(1)} MB; el máximo es ${MAX_FILE_MB} MB. Divida el tarifario o elimine hojas/columnas innecesarias.`,
+          );
+          return;
+        }
+        setSizeError(null);
+      }}
+      className="space-y-4"
+    >
       <input type="hidden" name="processId" value={processId} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Proveedor" htmlFor="providerId">
@@ -60,7 +84,9 @@ export function UploadForm({
           />
         </Field>
       </div>
-      {state.error && <p className="text-sm text-rose-600">{state.error}</p>}
+      {(sizeError || state.error) && (
+        <p className="text-sm text-rose-600">{sizeError ?? state.error}</p>
+      )}
       {state.ok && (
         <p className="text-sm text-emerald-600">
           Archivo cargado y analizado. Confirme el mapeo de columnas abajo.
