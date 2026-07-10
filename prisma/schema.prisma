@@ -288,6 +288,7 @@ model ProviderItem {
   rowNumber  Int
   rawName    String
   rawCode    String?
+  rawOwnCode String? // the buying institution's own CUPS ("CUPS PROPIO"), if the file includes it
   rawUnit    String?
   rawPrice   Decimal? @db.Decimal(14, 2)
   rawType    String? // tariff type column from the source file, if mapped

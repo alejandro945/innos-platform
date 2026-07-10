@@ -71,6 +71,19 @@ export async function normalizeProviderItem(providerItemId: string) {
   if (!item) return;
   const organizationId = item.provider.organizationId;
 
+  // 0. The institution's own CUPS ("CUPS PROPIO") is the strongest signal:
+  // it points straight at the canonical catalog.
+  const byOwnCode = await findByCode(organizationId, item.rawOwnCode);
+  if (byOwnCode) {
+    return persistMapping(providerItemId, {
+      canonicalItemId: byOwnCode,
+      confidence: 1,
+      method: "RULE",
+      status: "AUTO_APPROVED",
+      rationale: `Coincidencia exacta por CUPS propio "${item.rawOwnCode}".`,
+    });
+  }
+
   // 1. Exact code match (rule).
   const byCode = await findByCode(organizationId, item.rawCode);
   if (byCode) {

@@ -14,13 +14,25 @@ describe("heuristicMapping", () => {
     ];
     expect(heuristicMapping(headers)).toEqual({
       name: "DESCRIPCIÓN ESPECÍFICA",
-      code: "CUPS PROPIO",
+      code: null,
+      ownCode: "CUPS PROPIO", // the institution's own code, not the provider's
       price: "VALOR", // not "TARIFARIO" (regression guard for the \btarifa\b fix)
       unit: null,
       type: null, // "TARIFARIO / CONTRATISTA" must not be claimed as tariff type
       inclusions: null,
       exclusions: "EXCLUSIONES",
     });
+  });
+
+  it("separates the provider code from the institution's own CUPS", () => {
+    const m = heuristicMapping([
+      "Descripción",
+      "Código CUPS",
+      "CUPS Propio",
+      "Valor",
+    ]);
+    expect(m.ownCode).toBe("CUPS Propio");
+    expect(m.code).toBe("Código CUPS");
   });
 
   it("maps a tariff-type column when present", () => {

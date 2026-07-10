@@ -5,6 +5,7 @@ import { structuredGenerate, isLlmEnabled } from "@/lib/llm";
 export const MAPPING_FIELDS = [
   "name",
   "code",
+  "ownCode",
   "price",
   "unit",
   "type",
@@ -18,7 +19,8 @@ export type ColumnMapping = Record<MappingField, string | null>;
 
 export const FIELD_LABELS: Record<MappingField, string> = {
   name: "Nombre del servicio/producto",
-  code: "Código (CUPS/CUM)",
+  code: "Código del proveedor (CUPS/CUM)",
+  ownCode: "CUPS propio (código interno)",
   price: "Valor / precio",
   unit: "Unidad",
   type: "Tipo de tarifa (PROPIA si no se mapea)",
@@ -29,6 +31,7 @@ export const FIELD_LABELS: Record<MappingField, string> = {
 const mappingSchema = z.object({
   name: z.string().nullable(),
   code: z.string().nullable(),
+  ownCode: z.string().nullable(),
   price: z.string().nullable(),
   unit: z.string().nullable(),
   type: z.string().nullable(),
@@ -39,6 +42,9 @@ const mappingSchema = z.object({
 // Order matters: more specific fields are matched first so a header isn't
 // claimed by a looser pattern. Each header maps to at most one field.
 const KEYWORDS: Record<MappingField, RegExp> = {
+  // Matched before `code`: "CUPS PROPIO" / "Código interno" is the
+  // institution's own code, not the provider's.
+  ownCode: /((cups|cum|c[oó]digo|code)[\s_-]*(propio|interno)|(propio|interno)[\s_-]*(cups|cum|c[oó]digo|code))/i,
   code: /(cups|cum|c[oó]digo|code|atc)/i,
   price: /(valor|precio|\btarifa\b|costo|\bvr\.?\b|importe|total)/i,
   // \bum\b avoids matching "CUM"/"CUPS"; \bund?\b catches "und"/"un".
@@ -53,6 +59,7 @@ const KEYWORDS: Record<MappingField, RegExp> = {
 
 const FIELD_PRIORITY: MappingField[] = [
   "type",
+  "ownCode",
   "code",
   "price",
   "unit",
@@ -66,6 +73,7 @@ export function heuristicMapping(headers: string[]): ColumnMapping {
   const result: ColumnMapping = {
     name: null,
     code: null,
+    ownCode: null,
     price: null,
     unit: null,
     type: null,
@@ -109,7 +117,15 @@ export async function suggestColumnMapping(
       type: "object",
       properties: {
         name: { type: ["string", "null"] },
-        code: { type: ["string", "null"] },
+        code: {
+          type: ["string", "null"],
+          description: "Código propio del proveedor (CUPS/CUM del archivo).",
+        },
+        ownCode: {
+          type: ["string", "null"],
+          description:
+            "CUPS propio/interno de la institución compradora (ej. encabezado 'CUPS PROPIO' o 'Código interno').",
+        },
         price: { type: ["string", "null"] },
         unit: { type: ["string", "null"] },
         type: { type: ["string", "null"] },

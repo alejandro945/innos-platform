@@ -288,6 +288,7 @@ export async function confirmMapping(formData: FormData) {
   const mapping: ColumnMapping = {
     name: null,
     code: null,
+    ownCode: null,
     price: null,
     unit: null,
     type: null,
@@ -329,6 +330,9 @@ export async function confirmMapping(formData: FormData) {
           rowNumber,
           rawName,
           rawCode: mapping.code ? String(row[mapping.code] ?? "").trim() || null : null,
+          rawOwnCode: mapping.ownCode
+            ? String(row[mapping.ownCode] ?? "").trim() || null
+            : null,
           rawUnit: mapping.unit ? String(row[mapping.unit] ?? "").trim() || null : null,
           rawType: mapping.type ? String(row[mapping.type] ?? "").trim() || null : null,
           rawPrice: mapping.price ? parsePrice(row[mapping.price]) : null,
