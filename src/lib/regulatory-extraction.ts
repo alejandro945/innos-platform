@@ -21,12 +21,57 @@ const chunkResultSchema = z.object({
 });
 export type ChunkResult = z.infer<typeof chunkResultSchema>;
 
-const EMPTY_CHUNK_RESULT: ChunkResult = {
-  resolutionNumber: null,
-  resolutionDate: null,
-  title: null,
-  changes: [],
+/** Why a fragment did (or didn't) yield changes — persisted as audit trail. */
+export type ChunkOutcome =
+  | "CHANGES_FOUND"
+  | "NO_CHANGES"
+  | "SKIPPED_UNLIKELY"
+  | "LLM_ERROR"
+  | "LLM_UNAVAILABLE";
+
+export const CHUNK_OUTCOME_LABELS: Record<ChunkOutcome, string> = {
+  CHANGES_FOUND: "Cambios encontrados",
+  NO_CHANGES: "Analizado con IA — sin cambios",
+  SKIPPED_UNLIKELY: "Omitido — no contiene códigos",
+  LLM_ERROR: "Error de la IA en este fragmento",
+  LLM_UNAVAILABLE: "IA no configurada",
 };
+
+/** ChunkResult plus the trace of how it was produced. */
+export type ChunkExtraction = ChunkResult & {
+  chunkIndex: number;
+  outcome: ChunkOutcome;
+  codeCandidates: number;
+  excerpt: string;
+};
+
+const EXCERPT_LENGTH = 280;
+
+function chunkExcerpt(chunk: string): string {
+  return chunk.replace(/\s+/g, " ").trim().slice(0, EXCERPT_LENGTH);
+}
+
+function countCodeCandidates(chunk: string): number {
+  const compact = chunk.replace(/\s+/g, "");
+  return compact.match(/\d{6}/g)?.length ?? 0;
+}
+
+function emptyExtraction(
+  chunk: string,
+  chunkIndex: number,
+  outcome: ChunkOutcome,
+): ChunkExtraction {
+  return {
+    resolutionNumber: null,
+    resolutionDate: null,
+    title: null,
+    changes: [],
+    chunkIndex,
+    outcome,
+    codeCandidates: countCodeCandidates(chunk),
+    excerpt: chunkExcerpt(chunk),
+  };
+}
 
 // A resolution PDF is mostly legal boilerplate (considerandos, citations,
 // signatures) — only a small fraction of chunks actually contain a code
@@ -43,9 +88,7 @@ const CUPS_CODE_KEYWORD =
 function looksLikelyToContainCodes(chunk: string): boolean {
   // Strip whitespace before matching: PDF table extraction often splits a
   // single code across artificial spaces/line breaks (column layout).
-  const compact = chunk.replace(/\s+/g, "");
-  const codeRuns = compact.match(/\d{6}/g);
-  const codeCount = codeRuns ? codeRuns.length : 0;
+  const codeCount = countCodeCandidates(chunk);
   if (codeCount >= 3) return true; // looks like a code table
   return codeCount >= 1 && CUPS_CODE_KEYWORD.test(chunk);
 }
@@ -61,10 +104,10 @@ function looksLikelyToContainCodes(chunk: string): boolean {
 export async function extractChangesFromChunk(
   chunk: string,
   chunkIndex: number,
-): Promise<ChunkResult> {
-  if (!isLlmEnabled()) return EMPTY_CHUNK_RESULT;
+): Promise<ChunkExtraction> {
+  if (!isLlmEnabled()) return emptyExtraction(chunk, chunkIndex, "LLM_UNAVAILABLE");
   if (chunkIndex !== 0 && !looksLikelyToContainCodes(chunk)) {
-    return EMPTY_CHUNK_RESULT;
+    return emptyExtraction(chunk, chunkIndex, "SKIPPED_UNLIKELY");
   }
 
   const raw = await structuredGenerate({
@@ -132,9 +175,16 @@ ${chunk}
 Responde únicamente con el objeto solicitado.`,
   });
 
-  if (!raw) return EMPTY_CHUNK_RESULT;
+  if (!raw) return emptyExtraction(chunk, chunkIndex, "LLM_ERROR");
   const parsed = chunkResultSchema.safeParse(raw);
-  return parsed.success ? parsed.data : EMPTY_CHUNK_RESULT;
+  if (!parsed.success) return emptyExtraction(chunk, chunkIndex, "LLM_ERROR");
+  return {
+    ...parsed.data,
+    chunkIndex,
+    outcome: parsed.data.changes.length > 0 ? "CHANGES_FOUND" : "NO_CHANGES",
+    codeCandidates: countCodeCandidates(chunk),
+    excerpt: chunkExcerpt(chunk),
+  };
 }
 
 /**
@@ -163,12 +213,41 @@ export async function setChunksTotal(
  */
 export async function persistChunkResult(
   regulatoryUpdateId: string,
-  result: ChunkResult,
+  result: ChunkExtraction,
 ): Promise<void> {
   await prisma.regulatoryUpdate.update({
     where: { id: regulatoryUpdateId },
     data: { chunksProcessed: { increment: 1 } },
   });
+
+  // Audit trail: what this fragment contained and what the analysis did with
+  // it — evidence of the reading even when the whole run yields no changes.
+  // Upsert so an Inngest retry (or a re-run of the extraction) overwrites
+  // instead of failing on the unique constraint.
+  if (result.outcome !== undefined) {
+    await prisma.regulatoryChunkLog.upsert({
+      where: {
+        regulatoryUpdateId_chunkIndex: {
+          regulatoryUpdateId,
+          chunkIndex: result.chunkIndex,
+        },
+      },
+      update: {
+        outcome: result.outcome,
+        codeCandidates: result.codeCandidates,
+        changesFound: result.changes.length,
+        excerpt: result.excerpt || null,
+      },
+      create: {
+        regulatoryUpdateId,
+        chunkIndex: result.chunkIndex,
+        outcome: result.outcome,
+        codeCandidates: result.codeCandidates,
+        changesFound: result.changes.length,
+        excerpt: result.excerpt || null,
+      },
+    });
+  }
 
   const update = await prisma.regulatoryUpdate.findUnique({
     where: { id: regulatoryUpdateId },

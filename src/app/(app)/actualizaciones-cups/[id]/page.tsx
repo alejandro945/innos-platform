@@ -16,6 +16,11 @@ import {
   CUPS_CHANGE_STATUS_STYLES,
 } from "@/lib/regulatory-status";
 import { buildRegulatoryEmailDrafts } from "@/lib/regulatory-email";
+import {
+  CHUNK_OUTCOME_LABELS,
+  type ChunkOutcome,
+} from "@/lib/regulatory-extraction";
+import type { RegulatoryChunkLog } from "@prisma/client";
 import { CopyButton } from "../copy-button";
 import {
   setChangeStatus,
@@ -165,6 +170,10 @@ export default async function RegulatoryUpdateDetailPage({
   }
 
   if (update.status === "FAILED") {
+    const chunkLogs = await prisma.regulatoryChunkLog.findMany({
+      where: { regulatoryUpdateId: id },
+      orderBy: { chunkIndex: "asc" },
+    });
     return (
       <div>
         <PageHeader
@@ -179,7 +188,7 @@ export default async function RegulatoryUpdateDetailPage({
             </Link>
           }
         />
-        <Card className="bg-rose-50">
+        <Card className="mb-6 bg-rose-50">
           <p className="mb-3 text-sm text-rose-900">
             No se pudo procesar esta resolución (archivo vacío, ilegible, la
             IA no está configurada, o el análisis se interrumpió).
@@ -206,11 +215,12 @@ export default async function RegulatoryUpdateDetailPage({
             </div>
           )}
         </Card>
+        <ChunkTraceCard logs={chunkLogs} chunksTotal={update.chunksTotal} />
       </div>
     );
   }
 
-  const [changes, totalChanges, matchedTotal, approvedCount] = await Promise.all([
+  const [changes, totalChanges, matchedTotal, approvedCount, chunkLogs] = await Promise.all([
     prisma.cupsCodeChange.findMany({
       where: { regulatoryUpdateId: id },
       include: { matchedItem: { select: { normativeCode: true, name: true } } },
@@ -224,6 +234,10 @@ export default async function RegulatoryUpdateDetailPage({
     }),
     prisma.cupsCodeChange.count({
       where: { regulatoryUpdateId: id, status: "APPROVED" },
+    }),
+    prisma.regulatoryChunkLog.findMany({
+      where: { regulatoryUpdateId: id },
+      orderBy: { chunkIndex: "asc" },
     }),
   ]);
 
@@ -311,6 +325,15 @@ export default async function RegulatoryUpdateDetailPage({
         {changes.length === 0 ? (
           <p className="px-5 py-6 text-sm text-slate-500">
             La IA no detectó ningún cambio de código CUPS en esta resolución.
+            {chunkLogs.length > 0 ? (
+              <> Abajo queda la trazabilidad de la lectura: qué fragmentos del
+              PDF se leyeron, cuáles se analizaron con IA y por qué no
+              arrojaron cambios.</>
+            ) : (
+              <> Este análisis es anterior a la bitácora de lectura — use
+              “Reintentar” para volver a analizar y dejar trazabilidad de lo
+              que se lee.</>
+            )}
           </p>
         ) : (
           <>
@@ -429,8 +452,10 @@ export default async function RegulatoryUpdateDetailPage({
         )}
       </Card>
 
+      <ChunkTraceCard logs={chunkLogs} chunksTotal={update.chunksTotal} />
+
       {emailDrafts.length > 0 && (
-        <Card>
+        <Card className="mt-6">
           <div className="mb-3 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-500" />
             <h2 className="text-base font-semibold text-slate-900">
@@ -470,5 +495,106 @@ export default async function RegulatoryUpdateDetailPage({
         </Card>
       )}
     </div>
+  );
+}
+
+const OUTCOME_STYLES: Record<ChunkOutcome, string> = {
+  CHANGES_FOUND: "bg-emerald-100 text-emerald-700",
+  NO_CHANGES: "bg-slate-100 text-slate-600",
+  SKIPPED_UNLIKELY: "bg-slate-50 text-slate-400",
+  LLM_ERROR: "bg-rose-100 text-rose-700",
+  LLM_UNAVAILABLE: "bg-amber-100 text-amber-700",
+};
+
+/**
+ * Audit trail of the PDF reading: one row per text fragment with what it
+ * contained and what the analysis did with it — so "sin resultados" is never
+ * the only evidence of a run.
+ */
+function ChunkTraceCard({
+  logs,
+  chunksTotal,
+}: {
+  logs: RegulatoryChunkLog[];
+  chunksTotal: number | null;
+}) {
+  if (logs.length === 0) return null;
+
+  const count = (o: ChunkOutcome) => logs.filter((l) => l.outcome === o).length;
+  const analyzed =
+    count("CHANGES_FOUND") + count("NO_CHANGES") + count("LLM_ERROR");
+  const summary: { label: string; value: number; always?: boolean }[] = [
+    { label: "fragmentos leídos", value: logs.length, always: true },
+    { label: "analizados con IA", value: analyzed, always: true },
+    { label: "omitidos (sin códigos)", value: count("SKIPPED_UNLIKELY"), always: true },
+    { label: "con cambios", value: count("CHANGES_FOUND"), always: true },
+    { label: "errores de IA", value: count("LLM_ERROR") },
+    { label: "sin IA configurada", value: count("LLM_UNAVAILABLE") },
+  ];
+
+  return (
+    <Card className="overflow-hidden p-0">
+      <div className="border-b border-slate-200 px-5 py-3">
+        <h2 className="text-base font-semibold text-slate-900">
+          Trazabilidad de la lectura del PDF
+        </h2>
+        <p className="mt-0.5 text-xs text-slate-500">
+          {chunksTotal
+            ? `El texto se dividió en ${chunksTotal} fragmento(s).`
+            : null}{" "}
+          {summary
+            .filter((s) => s.always || s.value > 0)
+            .map((s) => `${s.value} ${s.label}`)
+            .join(" · ")}
+          . Los fragmentos sin códigos de 6 dígitos no se envían a la IA.
+        </p>
+      </div>
+      <details>
+        <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
+          Ver el detalle por fragmento ({logs.length})
+        </summary>
+        <div className="max-h-96 overflow-y-auto border-t border-slate-100">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500">
+              <tr>
+                <th className="px-5 py-2 font-medium">#</th>
+                <th className="px-5 py-2 font-medium">Resultado</th>
+                <th className="px-5 py-2 font-medium">Códigos vistos</th>
+                <th className="px-5 py-2 font-medium">Cambios</th>
+                <th className="px-5 py-2 font-medium">Inicio del fragmento</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {logs.map((l) => {
+                const outcome = (l.outcome in OUTCOME_STYLES
+                  ? l.outcome
+                  : "NO_CHANGES") as ChunkOutcome;
+                return (
+                  <tr key={l.id} className="align-top">
+                    <td className="px-5 py-2 text-slate-400">{l.chunkIndex + 1}</td>
+                    <td className="px-5 py-2">
+                      <span
+                        className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${OUTCOME_STYLES[outcome]}`}
+                      >
+                        {CHUNK_OUTCOME_LABELS[outcome]}
+                      </span>
+                    </td>
+                    <td className="px-5 py-2 tabular-nums text-slate-600">
+                      {l.codeCandidates}
+                    </td>
+                    <td className="px-5 py-2 tabular-nums text-slate-600">
+                      {l.changesFound}
+                    </td>
+                    <td className="px-5 py-2 text-xs text-slate-500">
+                      {l.excerpt ? `“${l.excerpt}…”` : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </Card>
   );
 }

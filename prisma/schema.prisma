@@ -427,11 +427,30 @@ model RegulatoryUpdate {
   createdById      String
   createdAt        DateTime  @default(now())
 
-  organization Organization     @relation(fields: [organizationId], references: [id])
-  createdBy    User             @relation(fields: [createdById], references: [id])
+  organization Organization         @relation(fields: [organizationId], references: [id])
+  createdBy    User                 @relation(fields: [createdById], references: [id])
   changes      CupsCodeChange[]
+  chunkLogs    RegulatoryChunkLog[]
 
   @@index([organizationId, status])
+}
+
+/// Audit trail of the PDF analysis, one row per text fragment: what was read,
+/// whether it went to the LLM or was skipped, and what it yielded — so a
+/// resolution with zero detected changes still shows evidence of the reading.
+model RegulatoryChunkLog {
+  id                 String   @id @default(cuid())
+  regulatoryUpdateId String
+  chunkIndex         Int
+  outcome            String // CHANGES_FOUND | NO_CHANGES | SKIPPED_UNLIKELY | LLM_ERROR | LLM_UNAVAILABLE
+  codeCandidates     Int      @default(0) // 6-digit code-like runs seen in the fragment text
+  changesFound       Int      @default(0)
+  excerpt            String? // opening of the fragment, as evidence of what was read
+  createdAt          DateTime @default(now())
+
+  regulatoryUpdate RegulatoryUpdate @relation(fields: [regulatoryUpdateId], references: [id], onDelete: Cascade)
+
+  @@unique([regulatoryUpdateId, chunkIndex])
 }
 
 enum CupsChangeStatus {
